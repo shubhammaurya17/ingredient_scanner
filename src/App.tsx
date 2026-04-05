@@ -35,6 +35,8 @@ import { auth, db } from './lib/firebase';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider, 
   signOut,
   User as FirebaseUser
@@ -126,20 +128,33 @@ const Badge = ({ children, variant = 'gray', className }: { children: React.Reac
 
 // --- Screens ---
 
-const LoginScreen = () => {
+const LoginScreen = ({ externalError }: { externalError?: string | null }) => {
   const [error, setError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  const displayError = externalError || error;
 
   const handleLogin = async () => {
     setError(null);
     setIsLoggingIn(true);
     const provider = new GoogleAuthProvider();
+    
+    // Mobile browsers (especially Safari) often block popups or fail with cross-site tracking
+    // signInWithRedirect is much more reliable on mobile devices.
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
     try {
-      await signInWithPopup(auth, provider);
+      if (isMobile) {
+        await signInWithRedirect(auth, provider);
+      } else {
+        await signInWithPopup(auth, provider);
+      }
     } catch (err: any) {
       console.error("Login failed", err);
       setError(err.message || "Login failed. Please try again.");
     } finally {
+      // For redirect, this won't matter as the page will reload, 
+      // but for popup it cleans up the state.
       setIsLoggingIn(false);
     }
   };
@@ -154,13 +169,13 @@ const LoginScreen = () => {
         Understand what's inside your food with AI-powered label scanning.
       </p>
       
-      {error && (
+      {displayError && (
         <div className="w-full max-w-xs mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start space-x-3">
           <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
           <div className="text-xs text-red-700 leading-relaxed">
             <p className="font-bold mb-1">Authentication Error</p>
-            <p>{error}</p>
-            {error.includes('unauthorized-domain') && (
+            <p>{displayError}</p>
+            {displayError.includes('unauthorized-domain') && (
               <p className="mt-2 text-[10px] opacity-80">
                 Tip: Add your Vercel domain to "Authorized domains" in Firebase Console (Auth &gt; Settings).
               </p>
@@ -1477,6 +1492,15 @@ export default function App() {
       setUser(u);
       setIsAuthReady(true);
     });
+
+    // Handle the result of a redirect sign-in flow
+    getRedirectResult(auth).catch((err) => {
+      console.error("Redirect sign-in error:", err);
+      if (err.code === 'auth/unauthorized-domain') {
+        setError("This domain is not authorized for login. Please check Firebase settings.");
+      }
+    });
+
     return unsubscribe;
   }, []);
 
@@ -1569,7 +1593,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginScreen />;
+    return <LoginScreen externalError={error} />;
   }
 
   if (comparisonResult) {
