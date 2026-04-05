@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user-specific settings and profile information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "dietaryPreferences": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["uid", "email"]
+    },
+    "Scan": {
+      "title": "Ingredient Scan",
+      "description": "Represents a single ingredient label scan and its analysis.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "imageUrl": { "type": "string", "format": "uri" },
+        "productName": { "type": "string" },
+        "ocrConfidence": { "type": "number" },
+        "analysisConfidence": { "type": "number" },
+        "overallVerdict": { "type": "string", "enum": ["Good", "Moderate", "Bad"] },
+        "healthScore": { "type": "number" },
+        "ingredientRiskScore": { "type": "number" },
+        "whySummary": { "type": "string" },
+        "nutritionSummary": {
+          "type": "object",
+          "properties": {
+            "sugar": { "type": "string" },
+            "sodium": { "type": "string" },
+            "protein": { "type": "string" },
+            "fiber": { "type": "string" },
+            "saturated_fat": { "type": "string" }
+          }
+        },
+        "ingredientBreakdown": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "simpleName": { "type": "string" },
+              "category": { "type": "string" },
+              "whatItIs": { "type": "string" },
+              "whyUsed": { "type": "string" },
+              "possibleBenefits": { "type": "array", "items": { "type": "string" } },
+              "possibleRisks": { "type": "array", "items": { "type": "string" } },
+              "estimatedQuantityNote": { "type": "string" },
+              "confidence": { "type": "number" },
+              "sourceType": { "type": "string", "enum": ["confirmed", "estimated", "low_confidence"] }
+            }
+          }
+        },
+        "suitabilityFlags": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "group": { "type": "string" },
+              "status": { "type": "string", "enum": ["Suitable", "Caution", "Avoid"] },
+              "reason": { "type": "string" },
+              "confidence": { "type": "number" }
+            }
+          }
+        },
+        "allergenFlags": { "type": "array", "items": { "type": "string" } },
+        "warnings": { "type": "array", "items": { "type": "string" } },
+        "rawOcrText": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "imageUrl", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "scans/{scanId}": {
+      "schema": "Scan",
+      "description": "Individual scan results"
+    }
+  }
+}

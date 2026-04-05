@@ -1,0 +1,7 @@
+{
+  "name": "AI Ingredient Scanner",
+  "description": "Scan packaged food labels to understand ingredients, health scores, and suitability for your dietary needs.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
