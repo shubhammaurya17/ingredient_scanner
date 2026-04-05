@@ -85,7 +85,7 @@ const Button = ({
     sm: 'px-3 py-1.5 text-sm rounded-lg',
     md: 'px-4 py-2.5 rounded-xl font-medium',
     lg: 'px-6 py-4 rounded-2xl font-semibold text-lg',
-    icon: 'p-2 rounded-xl',
+    icon: 'p-3 rounded-xl',
   };
 
   return (
@@ -226,7 +226,7 @@ const HomeScreen = ({
   ];
 
   return (
-    <div className="p-6 space-y-8 pb-24">
+    <div className="p-6 space-y-8 pb-24 safe-area-bottom">
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-display font-bold text-gray-900">Hello, {auth.currentUser?.displayName?.split(' ')[0]}</h1>
@@ -246,7 +246,7 @@ const HomeScreen = ({
               key={mode.id}
               onClick={() => onModeChange(mode.id)}
               className={cn(
-                "flex flex-col items-center justify-center p-3 rounded-2xl border transition-all",
+                "flex flex-col items-center justify-center p-3 rounded-2xl border transition-all active:scale-95",
                 currentMode === mode.id 
                   ? "border-brand-600 bg-brand-50 ring-2 ring-brand-100" 
                   : "border-gray-100 bg-white hover:border-gray-200"
@@ -382,7 +382,7 @@ const CompareScreen = ({
 
   if (selectingFor) {
     return (
-      <div className="min-h-screen bg-gray-50 pb-24">
+      <div className="min-h-screen bg-gray-50 pb-24 safe-area-bottom">
         <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex items-center">
           <Button variant="ghost" size="icon" onClick={() => setSelectingFor(null)} className="mr-2">
             <ArrowLeft className="w-6 h-6" />
@@ -421,7 +421,7 @@ const CompareScreen = ({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-gray-50 pb-24 safe-area-bottom">
       <div className="p-6 space-y-8">
         <div>
           <h1 className="text-2xl font-display font-bold text-gray-900">Compare</h1>
@@ -743,7 +743,7 @@ const ComparisonResultScreen = ({ products, onBack }: { products: ScanResult[], 
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-gray-50 pb-24 safe-area-bottom">
       <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex items-center">
         <Button variant="ghost" size="icon" onClick={onBack} className="mr-2">
           <ArrowLeft className="w-6 h-6" />
@@ -1177,7 +1177,7 @@ const ResultScreen = ({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-gray-50 pb-24 safe-area-bottom">
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex items-center">
         <Button variant="ghost" size="icon" onClick={onBack} className="mr-2">
           <ArrowLeft className="w-6 h-6" />
@@ -1695,7 +1695,7 @@ export default function App() {
             )}
             
             {activeTab === 'history' && (
-              <div className="p-6 space-y-6 pb-24">
+              <div className="p-6 space-y-6 pb-24 safe-area-bottom">
                 <div className="flex items-center justify-between">
                   <h1 className="text-2xl font-display font-bold">Scan History</h1>
                   <div className="flex items-center space-x-2">
@@ -1750,7 +1750,7 @@ export default function App() {
             )}
 
             {activeTab === 'profile' && (
-              <div className="p-6 space-y-8 pb-24">
+              <div className="p-6 space-y-8 pb-24 safe-area-bottom">
                 <h1 className="text-2xl font-display font-bold">Profile</h1>
                 <div className="flex flex-col items-center space-y-4">
                   <div className="w-24 h-24 rounded-full bg-gray-200 overflow-hidden border-4 border-white shadow-lg">
@@ -1808,7 +1808,8 @@ export default function App() {
         ref={fileInputRef} 
         onChange={handleImageUpload} 
         accept="image/*" 
-        className="hidden" 
+        className="hidden"
+        id="camera-input"
       />
 
       {!currentResult && (
