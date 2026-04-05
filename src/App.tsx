@@ -127,12 +127,20 @@ const Badge = ({ children, variant = 'gray', className }: { children: React.Reac
 // --- Screens ---
 
 const LoginScreen = () => {
+  const [error, setError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   const handleLogin = async () => {
+    setError(null);
+    setIsLoggingIn(true);
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
-    } catch (error) {
-      console.error("Login failed", error);
+    } catch (err: any) {
+      console.error("Login failed", err);
+      setError(err.message || "Login failed. Please try again.");
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -145,7 +153,28 @@ const LoginScreen = () => {
       <p className="text-gray-500 text-center mb-12 max-w-xs">
         Understand what's inside your food with AI-powered label scanning.
       </p>
-      <Button onClick={handleLogin} size="lg" className="w-full max-w-xs">
+      
+      {error && (
+        <div className="w-full max-w-xs mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start space-x-3">
+          <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-red-700 leading-relaxed">
+            <p className="font-bold mb-1">Authentication Error</p>
+            <p>{error}</p>
+            {error.includes('unauthorized-domain') && (
+              <p className="mt-2 text-[10px] opacity-80">
+                Tip: Add your Vercel domain to "Authorized domains" in Firebase Console (Auth &gt; Settings).
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      <Button 
+        onClick={handleLogin} 
+        size="lg" 
+        className="w-full max-w-xs"
+        isLoading={isLoggingIn}
+      >
         Continue with Google
       </Button>
       <p className="mt-8 text-xs text-gray-400 text-center max-w-[240px]">
