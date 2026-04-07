@@ -1,8 +1,38 @@
-export async function resizeImage(base64Str: string, maxWidth = 800, maxHeight = 800): Promise<string> {
+import heic2any from 'heic2any';
+
+export async function resizeImage(file: File | string, maxWidth = 800, maxHeight = 800): Promise<string> {
+  let blob: Blob;
+
+  if (typeof file === 'string') {
+    // If it's a base64 string
+    const res = await fetch(file);
+    blob = await res.blob();
+  } else {
+    blob = file;
+  }
+
+  // Handle HEIC/HEIF (common on iPhones)
+  if (blob.type === 'image/heic' || blob.type === 'image/heif' || (file instanceof File && file.name.toLowerCase().endsWith('.heic'))) {
+    try {
+      const converted = await heic2any({
+        blob,
+        toType: 'image/jpeg',
+        quality: 0.7
+      });
+      blob = Array.isArray(converted) ? converted[0] : converted;
+    } catch (err) {
+      console.error('HEIC conversion failed:', err);
+      // Fallback to original blob, maybe the browser can handle it
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.src = base64Str;
+    const url = URL.createObjectURL(blob);
+    
+    img.src = url;
     img.onload = () => {
+      URL.revokeObjectURL(url);
       const canvas = document.createElement('canvas');
       let width = img.width;
       let height = img.height;
@@ -31,6 +61,9 @@ export async function resizeImage(base64Str: string, maxWidth = 800, maxHeight =
       // Use jpeg with 0.7 quality to significantly reduce size
       resolve(canvas.toDataURL('image/jpeg', 0.7));
     };
-    img.onerror = (err) => reject(err);
+    img.onerror = (err) => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load image. Please ensure it is a valid image file.'));
+    };
   });
 }

@@ -1710,54 +1710,44 @@ export default function App() {
     setError(null);
     
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const rawBase64 = reader.result as string;
-        try {
-          setProcessingStep('Optimizing image size...');
-          // Resize image BEFORE analysis to speed up upload and processing
-          // 800x800 is plenty for OCR and analysis
-          const base64 = await resizeImage(rawBase64, 800, 800);
-          
-          setProcessingStep('AI decoding ingredients...');
-          const analysis = await analyzeIngredientLabel(base64, file.type, analysisMode);
-          
-          setProcessingStep('Finalizing results...');
-          // Create a smaller thumbnail for Firestore storage to avoid 1MB limit
-          const thumbnail = await resizeImage(base64, 400, 400);
+      setProcessingStep('Optimizing image size...');
+      // Pass the File object directly to resizeImage for better HEIC support and memory efficiency
+      const base64 = await resizeImage(file, 800, 800);
+      
+      setProcessingStep('AI decoding ingredients...');
+      // Since resizeImage always returns image/jpeg, we should pass 'image/jpeg' to the service
+      const analysis = await analyzeIngredientLabel(base64, 'image/jpeg', analysisMode);
+      
+      setProcessingStep('Finalizing results...');
+      // Create a smaller thumbnail for Firestore storage to avoid 1MB limit
+      const thumbnail = await resizeImage(base64, 400, 400);
 
-          // Save to Firestore
-          const { imageUrl, ...analysisWithoutImage } = analysis;
-          const scanDoc = {
-            ...analysisWithoutImage,
-            userId: user.uid,
-            imageUrl: thumbnail, // Store resized thumbnail
-            createdAt: serverTimestamp()
-          };
-          
-          const docRef = await addDoc(collection(db, 'scans'), scanDoc);
-          const finalResult = { ...scanDoc, imageUrl: base64, id: docRef.id, createdAt: { seconds: Date.now() / 1000 } } as ScanResult;
-
-          if (scanningForSlot === 1) {
-            setCompareP1(finalResult);
-            setScanningForSlot(null);
-          } else if (scanningForSlot === 2) {
-            setCompareP2(finalResult);
-            setScanningForSlot(null);
-          } else {
-            setCurrentResult(finalResult);
-          }
-        } catch (err) {
-          console.error("Analysis failed", err);
-          setError("Failed to analyze image. Please try a clearer photo.");
-        } finally {
-          setIsProcessing(false);
-        }
+      // Save to Firestore
+      const { imageUrl, ...analysisWithoutImage } = analysis;
+      const scanDoc = {
+        ...analysisWithoutImage,
+        userId: user.uid,
+        imageUrl: thumbnail, // Store resized thumbnail
+        createdAt: serverTimestamp()
       };
-      reader.readAsDataURL(file);
-    } catch (err) {
+      
+      const docRef = await addDoc(collection(db, 'scans'), scanDoc);
+      const finalResult = { ...scanDoc, imageUrl: base64, id: docRef.id, createdAt: { seconds: Date.now() / 1000 } } as ScanResult;
+
+      if (scanningForSlot === 1) {
+        setCompareP1(finalResult);
+        setScanningForSlot(null);
+      } else if (scanningForSlot === 2) {
+        setCompareP2(finalResult);
+        setScanningForSlot(null);
+      } else {
+        setCurrentResult(finalResult);
+      }
+    } catch (err: any) {
+      console.error("Analysis failed", err);
+      setError(`Analysis failed: ${err.message || "Please try a clearer photo."}`);
+    } finally {
       setIsProcessing(false);
-      setError("Failed to read image.");
     }
   };
 
