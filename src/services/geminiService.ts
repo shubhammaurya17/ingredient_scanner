@@ -86,44 +86,36 @@ const SCAN_RESULT_SCHEMA = {
 export async function analyzeIngredientLabel(base64Image: string, mimeType: string, mode: AnalysisMode = "General"): Promise<ScanResult> {
   const model = "gemini-3-flash-preview";
   
-  const modeInstructions = {
-    General: "Provide a balanced health analysis for a general consumer.",
-    Diabetic: "Focus heavily on glycemic index, hidden sugars (maltodextrin, syrups), and refined carbs. Be extra critical of sugar content.",
-    Kids: "Focus on artificial colors, preservatives, high sugar, and caffeine. Use parent-friendly language.",
-    Gym: "Focus on protein quality, protein-to-sugar ratio, and filler ingredients. Highlight satiety and muscle-building support."
+  const modeInstructions: Record<string, string> = {
+    General: "General consumer health analysis.",
+    Diabetic: "Focus on glycemic index and hidden sugars.",
+    Kids: "Focus on artificial colors and high sugar.",
+    Gym: "Focus on protein quality and fillers."
   };
 
   const prompt = `
-    Analyze this packaged food/beverage ingredient label image.
+    Analyze this food label image. Mode: ${mode}. Focus: ${modeInstructions[mode] || modeInstructions.General}.
     
-    Current Mode: ${mode}
-    Mode Focus: ${modeInstructions[mode]}
+    Indian Label Context:
+    - Handle FSSAI labeling and INS codes.
+    - Be critical of Palm Oil/Vanaspati.
+    - RULE: If sugar > 50% weight, verdict MUST be "Avoid".
     
-    Special Instructions for Indian Labels:
-    - Be aware of FSSAI-style labeling.
-    - Interpret INS codes (e.g., INS 211 is Sodium Benzoate).
-    - Handle terms like "nature identical flavoring substances" and "class II preservatives".
-    - Be critical of "Palm Oil" and "Vanaspati" common in Indian snacks.
-    - CRITICAL RULE: If total sugar content is around or more than 50% of the product weight (e.g., 50g per 100g), the verdict_action MUST be "Avoid" regardless of other positive factors.
-    
-    1. Extract all text (OCR).
-    2. Identify ingredients, additives, preservatives, sweeteners, allergens.
-    3. Calculate a health score (0-100) and ingredient risk score.
-    4. Provide a verdict (Good, Moderate, Bad) and a clear action (Good Choice, Not Ideal, Avoid).
-    - Good Choice: Suitable for regular use.
-    - Not Ideal: Better consumed occasionally.
-    - Avoid: Avoid for regular consumption.
-    5. List the Top 3 reasons for this verdict.
-    6. Provide a scoring breakdown (e.g., "Sugar impact: -15").
-    7. Determine confidence level (High, Moderate, Low) and explain why (e.g., "OCR clear", "90% ingredients matched").
-    8. Evaluate suitability for various groups (Children, Diabetics, etc.).
-    9. For each ingredient, provide a risk level (Low, Medium, High) and source tag (confirmed, estimated, low_confidence).
-    10. Identify processing level (e.g., "Ultra-processed").
-    11. Provide "Better Alternatives Guidance" - what should the user look for instead if this is bad?
-    12. CRITICAL: For nutrition values, use ONLY simple standard units: "g" for grams, "mg" for milligrams, "kcal" for calories, or "ml" for milliliters. DO NOT use complex units like "g per ml", "mg per 100ml", "mlg", "gg", or other non-standard abbreviations. Ensure there is a space between the number and the unit (e.g., "10 g", "500 mg").
-    13. Do not provide medical diagnosis.
-    14. Use consumer-friendly language.
-    15. Return the result in the specified JSON format.
+    Tasks:
+    1. OCR text.
+    2. Identify ingredients and additives.
+    3. Score health (0-100) and risk.
+    4. Verdict: Good/Moderate/Bad. Action: Good Choice/Not Ideal/Avoid.
+    5. Top 3 reasons.
+    6. Score breakdown.
+    7. Confidence level.
+    8. Suitability (Children, Diabetics, etc.).
+    9. Ingredient risk levels.
+    10. Processing level.
+    11. Better alternatives.
+    12. Use standard units (g, mg, kcal, ml) with space.
+    13. No medical diagnosis.
+    14. JSON output only.
   `;
 
   const response = await ai.models.generateContent({

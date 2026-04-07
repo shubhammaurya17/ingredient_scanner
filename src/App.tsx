@@ -53,7 +53,8 @@ import {
   doc,
   setDoc,
   getDoc,
-  getDocFromServer
+  getDocFromServer,
+  limit
 } from 'firebase/firestore';
 import { cn } from './lib/utils';
 import { ScanResult, UserProfile, Verdict, SuitabilityStatus, AnalysisMode, Collection } from './types';
@@ -1592,6 +1593,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'home' | 'compare' | 'history' | 'profile'>('home');
   const [scans, setScans] = useState<ScanResult[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStep, setProcessingStep] = useState<string>('');
   const [currentResult, setCurrentResult] = useState<ScanResult | null>(null);
   const [comparisonResult, setComparisonResult] = useState<ScanResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1604,21 +1606,23 @@ export default function App() {
   const [showCollections, setShowCollections] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
   
-  const sortedScans = [...scans].sort((a, b) => {
-    if (sortBy === 'date') {
-      const getTime = (date: any) => {
-        if (!date) return 0;
-        if (typeof date.toDate === 'function') return date.toDate().getTime();
-        if (date.seconds) return date.seconds * 1000;
-        return new Date(date).getTime();
-      };
-      const timeA = getTime(a.createdAt);
-      const timeB = getTime(b.createdAt);
-      return sortDirection === 'desc' ? timeB - timeA : timeA - timeB;
-    } else {
-      return sortDirection === 'desc' ? (b.health_score || 0) - (a.health_score || 0) : (a.health_score || 0) - (b.health_score || 0);
-    }
-  });
+  const sortedScans = React.useMemo(() => {
+    return [...scans].sort((a, b) => {
+      if (sortBy === 'date') {
+        const getTime = (date: any) => {
+          if (!date) return 0;
+          if (typeof date.toDate === 'function') return date.toDate().getTime();
+          if (date.seconds) return date.seconds * 1000;
+          return new Date(date).getTime();
+        };
+        const timeA = getTime(a.createdAt);
+        const timeB = getTime(b.createdAt);
+        return sortDirection === 'desc' ? timeB - timeA : timeA - timeB;
+      } else {
+        return sortDirection === 'desc' ? (b.health_score || 0) - (a.health_score || 0) : (a.health_score || 0) - (b.health_score || 0);
+      }
+    });
+  }, [scans, sortBy, sortDirection]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1684,7 +1688,8 @@ export default function App() {
       const q = query(
         collection(db, 'scans'),
         where('userId', '==', user.uid),
-        orderBy('createdAt', 'desc')
+        orderBy('createdAt', 'desc'),
+        limit(20)
       );
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const scanData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ScanResult));
@@ -1701,6 +1706,7 @@ export default function App() {
     if (!file || !user) return;
 
     setIsProcessing(true);
+    setProcessingStep('Reading image...');
     setError(null);
     
     try {
@@ -1708,12 +1714,15 @@ export default function App() {
       reader.onloadend = async () => {
         const rawBase64 = reader.result as string;
         try {
+          setProcessingStep('Optimizing image size...');
           // Resize image BEFORE analysis to speed up upload and processing
-          // 1024x1024 is plenty for OCR and analysis
-          const base64 = await resizeImage(rawBase64, 1024, 1024);
+          // 800x800 is plenty for OCR and analysis
+          const base64 = await resizeImage(rawBase64, 800, 800);
           
+          setProcessingStep('AI decoding ingredients...');
           const analysis = await analyzeIngredientLabel(base64, file.type, analysisMode);
           
+          setProcessingStep('Finalizing results...');
           // Create a smaller thumbnail for Firestore storage to avoid 1MB limit
           const thumbnail = await resizeImage(base64, 400, 400);
 
@@ -1806,7 +1815,8 @@ export default function App() {
               </div>
             </div>
             <h2 className="text-2xl font-display font-bold text-gray-900 mb-2">Analyzing Ingredients</h2>
-            <p className="text-gray-500">Our AI is decoding the label and calculating health scores. This takes a few seconds...</p>
+            <p className="text-brand-600 font-bold mb-4 animate-pulse">{processingStep}</p>
+            <p className="text-gray-500 text-sm">Our AI is decoding the label and calculating health scores. This takes a few seconds...</p>
           </motion.div>
         )}
 
