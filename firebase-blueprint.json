@@ -7,6 +7,7 @@
       "properties": {
         "uid": { "type": "string", "description": "Firebase Auth UID" },
         "email": { "type": "string", "format": "email" },
+        "phoneNumber": { "type": "string", "description": "User's verified phone number" },
         "displayName": { "type": "string" },
         "photoURL": { "type": "string", "format": "uri" },
         "createdAt": { "type": "string", "format": "date-time" },
@@ -15,7 +16,7 @@
           "items": { "type": "string" }
         }
       },
-      "required": ["uid", "email"]
+      "required": ["uid"]
     },
     "Scan": {
       "title": "Ingredient Scan",

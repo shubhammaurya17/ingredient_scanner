@@ -9,7 +9,8 @@ service cloud.firestore {
     // Document ID: userId (Auth UID)
     // Fields:
     //   - uid: string (required)
-    //   - email: string (required)
+    //   - email: string (optional)
+    //   - phoneNumber: string (optional)
     //   - displayName: string
     //   - photoURL: string
     //   - createdAt: timestamp
@@ -42,9 +43,10 @@ service cloud.firestore {
     }
 
     function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'email']) &&
+      return data.keys().hasAll(['uid']) &&
              data.uid is string &&
-             data.email is string;
+             (!('email' in data) || data.email is string) &&
+             (!('phoneNumber' in data) || data.phoneNumber is string);
     }
 
     function isValidScan(data) {
