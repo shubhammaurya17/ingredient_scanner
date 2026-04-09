@@ -59,7 +59,7 @@ import {
 import { cn } from './lib/utils';
 import { ScanResult, UserProfile, Verdict, SuitabilityStatus, AnalysisMode, Collection } from './types';
 import { analyzeIngredientLabel } from './services/geminiService';
-import { resizeImage } from './lib/imageUtils';
+import { resizeImage, generatePlaceholder } from './lib/imageUtils';
 import Markdown from 'react-markdown';
 
 // --- Components ---
@@ -126,6 +126,44 @@ const Badge = ({ children, variant = 'gray', className }: { children: React.Reac
     <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border inline-flex items-center', variants[variant], className)}>
       {children}
     </span>
+  );
+};
+
+const ProgressiveImage = ({ 
+  src, 
+  placeholder, 
+  alt, 
+  className 
+}: { 
+  src: string; 
+  placeholder?: string; 
+  alt: string; 
+  className?: string 
+}) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  return (
+    <div className={cn("relative overflow-hidden bg-gray-100", className)}>
+      {placeholder && !isLoaded && (
+        <img
+          src={placeholder}
+          alt={alt}
+          className="absolute inset-0 w-full h-full object-cover blur-lg scale-110 transition-opacity duration-500"
+          aria-hidden="true"
+        />
+      )}
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        onLoad={() => setIsLoaded(true)}
+        className={cn(
+          "w-full h-full object-cover transition-opacity duration-500",
+          isLoaded ? "opacity-100" : "opacity-0"
+        )}
+        referrerPolicy="no-referrer"
+      />
+    </div>
   );
 };
 
@@ -467,7 +505,12 @@ const HomeScreen = ({
                 >
                   <div className="w-16 h-16 rounded-xl bg-gray-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
                     {scan.imageUrl ? (
-                      <img src={scan.imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <ProgressiveImage 
+                        src={scan.imageUrl} 
+                        placeholder={scan.placeholderUrl}
+                        alt={scan.product_name} 
+                        className="w-full h-full"
+                      />
                     ) : (
                       <ScanIcon className="w-6 h-6 text-gray-300" />
                     )}
@@ -541,7 +584,12 @@ const CompareScreen = ({
               >
                 <div className="w-12 h-12 rounded-lg bg-gray-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
                   {scan.imageUrl ? (
-                    <img src={scan.imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <ProgressiveImage 
+                      src={scan.imageUrl} 
+                      placeholder={scan.placeholderUrl}
+                      alt={scan.product_name} 
+                      className="w-full h-full"
+                    />
                   ) : (
                     <ScanIcon className="w-6 h-6 text-gray-300" />
                   )}
@@ -599,7 +647,12 @@ const CompareScreen = ({
               {p1 ? (
                 <>
                 {p1.imageUrl && (
-                  <img src={p1.imageUrl} className="absolute inset-0 w-full h-full object-cover opacity-20" referrerPolicy="no-referrer" />
+                  <ProgressiveImage 
+                    src={p1.imageUrl} 
+                    placeholder={p1.placeholderUrl}
+                    alt={p1.product_name} 
+                    className="absolute inset-0 w-full h-full opacity-20"
+                  />
                 )}
                   <div className="relative z-10 text-center p-4">
                     <h3 className="font-bold text-brand-900 mb-1">{p1.product_name}</h3>
@@ -646,7 +699,12 @@ const CompareScreen = ({
               {p2 ? (
                 <>
                 {p2.imageUrl && (
-                  <img src={p2.imageUrl} className="absolute inset-0 w-full h-full object-cover opacity-20" referrerPolicy="no-referrer" />
+                  <ProgressiveImage 
+                    src={p2.imageUrl} 
+                    placeholder={p2.placeholderUrl}
+                    alt={p2.product_name} 
+                    className="absolute inset-0 w-full h-full opacity-20"
+                  />
                 )}
                   <div className="relative z-10 text-center p-4">
                     <h3 className="font-bold text-brand-900 mb-1">{p2.product_name}</h3>
@@ -952,7 +1010,12 @@ const ComparisonResultScreen = ({ products, onBack }: { products: ScanResult[], 
               )}
               <div className="w-20 h-20 rounded-2xl bg-gray-50 overflow-hidden shadow-inner flex items-center justify-center">
                 {p.imageUrl ? (
-                  <img src={p.imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <ProgressiveImage 
+                    src={p.imageUrl} 
+                    placeholder={p.placeholderUrl}
+                    alt={p.product_name} 
+                    className="w-full h-full"
+                  />
                 ) : (
                   <ScanIcon className="w-8 h-8 text-gray-200" />
                 )}
@@ -1352,6 +1415,19 @@ const ResultScreen = ({
       </div>
 
       <div className="p-6 space-y-6">
+        {/* 0. Product Image */}
+        {result.imageUrl && (
+          <div className="relative h-64 bg-gray-100 rounded-3xl overflow-hidden shadow-lg border border-gray-100">
+            <ProgressiveImage 
+              src={result.imageUrl} 
+              placeholder={result.placeholderUrl}
+              alt={result.product_name} 
+              className="w-full h-full"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+          </div>
+        )}
+
         {/* 1. Primary Verdict Card */}
         <Card className="p-6 flex flex-col items-center text-center space-y-4 border-none shadow-xl shadow-gray-200/50">
           <div className={cn("px-8 py-3 rounded-3xl font-display flex flex-col items-center shadow-lg", actionColors[result.verdict_action])}>
@@ -1717,9 +1793,11 @@ export default function App() {
     
     try {
       setProcessingStep('Optimizing image...');
-      // 1. Resize for analysis (700px is optimal for OCR and faster to upload)
-      // Using 0.5 quality significantly reduces payload size for faster mobile uploads
-      const base64 = await resizeImage(file, 700, 700, 0.5);
+      // 1. Generate placeholder and analysis image concurrently for speed
+      const [base64, placeholder] = await Promise.all([
+        resizeImage(file, 700, 700, 0.5),
+        generatePlaceholder(file)
+      ]);
       
       setProcessingStep('AI analysis in progress...');
       // 2. Start analysis and thumbnail generation concurrently
@@ -1734,6 +1812,7 @@ export default function App() {
       const initialResult = { 
         ...analysis, 
         imageUrl: base64, 
+        placeholderUrl: placeholder,
         id: tempId, 
         createdAt: { seconds: Date.now() / 1000 } 
       } as ScanResult;
@@ -1760,11 +1839,12 @@ export default function App() {
             ...analysisWithoutImage,
             userId: user.uid,
             imageUrl: thumbnail, // Store resized thumbnail
+            placeholderUrl: placeholder,
             createdAt: serverTimestamp()
           };
           
           const docRef = await addDoc(collection(db, 'scans'), scanDoc);
-          const finalResult = { ...scanDoc, imageUrl: base64, id: docRef.id, createdAt: { seconds: Date.now() / 1000 } } as ScanResult;
+          const finalResult = { ...scanDoc, imageUrl: base64, placeholderUrl: placeholder, id: docRef.id, createdAt: { seconds: Date.now() / 1000 } } as ScanResult;
 
           // Silently update the state with the real Firestore ID
           if (scanningForSlot === 1) setCompareP1(finalResult);
@@ -1937,7 +2017,12 @@ export default function App() {
                       >
                         <div className="w-16 h-16 rounded-xl bg-gray-100 overflow-hidden flex-shrink-0 flex items-center justify-center">
                           {scan.imageUrl ? (
-                            <img src={scan.imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <ProgressiveImage 
+                              src={scan.imageUrl} 
+                              placeholder={scan.placeholderUrl}
+                              alt={scan.product_name} 
+                              className="w-full h-full"
+                            />
                           ) : (
                             <ScanIcon className="w-6 h-6 text-gray-300" />
                           )}

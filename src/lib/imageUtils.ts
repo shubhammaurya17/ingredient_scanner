@@ -67,3 +67,9 @@ export async function resizeImage(file: File | string, maxWidth = 800, maxHeight
     };
   });
 }
+
+export async function generatePlaceholder(file: File | string): Promise<string> {
+  // Generate an extremely small, low-quality image for blur-up effect
+  // 20x20 at 0.1 quality is usually < 1KB
+  return resizeImage(file, 20, 20, 0.1);
+}

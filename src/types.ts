@@ -59,6 +59,7 @@ export interface ScanResult {
   warnings: string[];
   raw_ocr_text: string;
   imageUrl: string;
+  placeholderUrl?: string;
   userId: string;
   createdAt: any;
   processing_level: string;
