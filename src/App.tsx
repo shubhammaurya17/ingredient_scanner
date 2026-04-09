@@ -409,7 +409,7 @@ const HomeScreen = ({
             <Camera className="w-10 h-10" />
           </div>
           <div className="text-center">
-            <span className="text-xl font-bold block">Scan Food Label</span>
+            <span className="text-xl font-bold block">Capture Ingredients</span>
             <span className="text-sm text-white/70">Instant AI analysis & health score</span>
           </div>
         </Button>
@@ -1717,13 +1717,14 @@ export default function App() {
     
     try {
       setProcessingStep('Optimizing image...');
-      // 1. Resize for analysis (800px is optimal for OCR)
-      const base64 = await resizeImage(file, 800, 800);
+      // 1. Resize for analysis (700px is optimal for OCR and faster to upload)
+      // Using 0.5 quality significantly reduces payload size for faster mobile uploads
+      const base64 = await resizeImage(file, 700, 700, 0.5);
       
       setProcessingStep('AI analysis in progress...');
       // 2. Start analysis and thumbnail generation concurrently
       const analysisPromise = analyzeIngredientLabel(base64, 'image/jpeg', analysisMode);
-      const thumbnailPromise = resizeImage(base64, 400, 400);
+      const thumbnailPromise = resizeImage(base64, 300, 300, 0.4);
 
       // 3. Wait for analysis
       const analysis = await analysisPromise;

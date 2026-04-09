@@ -1,6 +1,6 @@
 import heic2any from 'heic2any';
 
-export async function resizeImage(file: File | string, maxWidth = 800, maxHeight = 800): Promise<string> {
+export async function resizeImage(file: File | string, maxWidth = 800, maxHeight = 800, quality = 0.7): Promise<string> {
   let blob: Blob;
 
   if (typeof file === 'string') {
@@ -17,7 +17,7 @@ export async function resizeImage(file: File | string, maxWidth = 800, maxHeight
       const converted = await heic2any({
         blob,
         toType: 'image/jpeg',
-        quality: 0.7
+        quality: quality
       });
       blob = Array.isArray(converted) ? converted[0] : converted;
     } catch (err) {
@@ -58,8 +58,8 @@ export async function resizeImage(file: File | string, maxWidth = 800, maxHeight
       }
 
       ctx.drawImage(img, 0, 0, width, height);
-      // Use jpeg with 0.7 quality to significantly reduce size
-      resolve(canvas.toDataURL('image/jpeg', 0.7));
+      // Use jpeg with specified quality to significantly reduce size
+      resolve(canvas.toDataURL('image/jpeg', quality));
     };
     img.onerror = (err) => {
       URL.revokeObjectURL(url);
