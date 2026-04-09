@@ -28,7 +28,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   Activity,
-  Share2
+  Share2,
+  RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { auth, db } from './lib/firebase';
@@ -1830,9 +1831,18 @@ export default function App() {
     }
   }, [user]);
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const [lastFile, setLastFile] = useState<File | null>(null);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement> | File) => {
+    let file: File | undefined;
+    if (e instanceof File) {
+      file = e;
+    } else {
+      file = e.target.files?.[0];
+    }
+    
     if (!file || !user) return;
+    setLastFile(file);
 
     setIsProcessing(true);
     setProcessingStep('Reading image...');
@@ -1842,9 +1852,9 @@ export default function App() {
     try {
       setProcessingStep('Optimizing image...');
       // 1. Generate placeholder and analysis image concurrently for speed
-      // Increased size to 1024 for better OCR accuracy while keeping compression high
+      // Reduced size to 800 for faster upload while maintaining enough OCR accuracy
       const [base64, placeholder] = await Promise.all([
-        resizeImage(file, 1024, 1024, 0.5),
+        resizeImage(file, 800, 800, 0.4),
         generatePlaceholder(file)
       ]);
       
@@ -2070,13 +2080,29 @@ export default function App() {
           <motion.div 
             initial={{ y: -100 }}
             animate={{ y: 0 }}
-            className="fixed top-4 left-4 right-4 z-50 bg-red-50 border border-red-100 p-4 rounded-2xl flex items-center shadow-lg"
+            className="fixed top-4 left-4 right-4 z-50 bg-red-50 border border-red-100 p-4 rounded-2xl flex flex-col shadow-lg"
           >
-            <AlertCircle className="w-5 h-5 text-red-600 mr-3" />
-            <p className="text-sm text-red-700 flex-1">{error}</p>
-            <Button variant="ghost" size="icon" onClick={() => setError(null)}>
-              <X className="w-5 h-5" />
-            </Button>
+            <div className="flex items-center mb-3">
+              <AlertCircle className="w-5 h-5 text-red-600 mr-3" />
+              <p className="text-sm text-red-700 flex-1">{error}</p>
+              <Button variant="ghost" size="icon" onClick={() => setError(null)}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            {lastFile && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full bg-white text-red-600 border-red-200 hover:bg-red-50"
+                onClick={() => {
+                  setError(null);
+                  handleImageUpload(lastFile);
+                }}
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Retry Analysis
+              </Button>
+            )}
           </motion.div>
         )}
 

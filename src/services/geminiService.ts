@@ -94,40 +94,60 @@ const EXTRACTION_SCHEMA = {
 };
 
 export async function extractIngredientsText(base64Image: string, mimeType: string): Promise<{ product_name: string, ingredients_text: string, nutrition_text?: string }> {
-  const model = "gemini-3-flash-preview";
+  const primaryModel = "gemini-3-flash-preview";
+  const fallbackModel = "gemini-1.5-flash";
   const prompt = `
-    Extract the product name and the full list of ingredients from this food label. 
-    Also extract the nutrition facts table text if visible.
-    Return as JSON.
+    OCR this food label. 
+    1. Extract Product Name.
+    2. Extract full Ingredients list.
+    3. Extract Nutrition table text.
+    JSON only.
   `;
 
-  try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: [
-        {
-          parts: [
-            { text: prompt },
-            { inlineData: { data: base64Image.split(',')[1] || base64Image, mimeType } }
-          ]
+  const maxRetries = 5;
+  let retryCount = 0;
+
+  while (retryCount <= maxRetries) {
+    const model = retryCount >= 3 ? fallbackModel : primaryModel;
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              { inlineData: { data: base64Image.split(',')[1] || base64Image, mimeType } }
+            ]
+          }
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: EXTRACTION_SCHEMA,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
         }
-      ],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: EXTRACTION_SCHEMA,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+      });
+
+      if (!response.text) {
+        throw new Error("No response from Gemini during extraction");
       }
-    });
 
-    if (!response.text) {
-      throw new Error("No response from Gemini during extraction");
+      return JSON.parse(response.text);
+    } catch (error: any) {
+      const errorMsg = error?.message || String(error);
+      const isRetryable = errorMsg.includes("503") || errorMsg.includes("429") || errorMsg.includes("high demand") || error?.status === 503 || error?.code === 503;
+      
+      if (isRetryable && retryCount < maxRetries) {
+        retryCount++;
+        const delay = Math.pow(2, retryCount) * 1000;
+        console.warn(`Gemini extraction retry ${retryCount}/${maxRetries} using ${retryCount >= 3 ? fallbackModel : primaryModel} after ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      console.error("Extraction error:", error);
+      throw error;
     }
-
-    return JSON.parse(response.text);
-  } catch (error) {
-    console.error("Extraction error:", error);
-    throw error;
   }
+  throw new Error("Failed to extract text after multiple retries.");
 }
 
 export async function analyzeIngredientsFromText(
@@ -136,47 +156,44 @@ export async function analyzeIngredientsFromText(
   nutritionText: string | undefined, 
   mode: AnalysisMode = "General"
 ): Promise<ScanResult> {
-  const model = "gemini-3-flash-preview";
+  const primaryModel = "gemini-3-flash-preview";
+  const fallbackModel = "gemini-1.5-flash";
   
   const modeInstructions: Record<string, string> = {
-    General: "General consumer health analysis.",
-    Diabetic: "Focus on glycemic index and hidden sugars.",
-    Kids: "Focus on artificial colors and high sugar.",
-    Gym: "Focus on protein quality and fillers."
+    General: "General health.",
+    Diabetic: "Glycemic index, hidden sugars.",
+    Kids: "Artificial colors, sugar.",
+    Gym: "Protein quality, fillers."
   };
 
   const prompt = `
-    Analyze this food product based on the provided text.
+    Analyze food product.
     Product: ${productName}
     Ingredients: ${ingredientsText}
-    Nutrition Info: ${nutritionText || "Not provided"}
-    Mode: ${mode}. Focus: ${modeInstructions[mode] || modeInstructions.General}.
+    Nutrition: ${nutritionText || "N/A"}
+    Mode: ${mode} (${modeInstructions[mode] || modeInstructions.General}).
     
-    Indian Label Context:
-    - Handle FSSAI labeling and INS codes.
-    - Be critical of Palm Oil/Vanaspati.
-    - RULE: If sugar > 50% weight, verdict MUST be "Avoid".
+    Context: Indian FSSAI, INS codes. Critical of Palm Oil. Sugar > 50% = Avoid.
     
-    Tasks:
-    1. Identify additives and risks.
-    2. Score health (0-100) and risk.
-    3. Verdict: Good/Moderate/Bad. Action: Good Choice/Not Ideal/Avoid.
-    4. Top 3 reasons.
-    5. Score breakdown.
-    6. Confidence level.
-    7. Suitability (Children, Diabetics, etc.).
-    8. Ingredient risk levels.
-    9. Processing level.
-    10. Better alternatives.
-    11. Use standard units (g, mg, kcal, ml) with space.
-    12. No medical diagnosis.
-    13. JSON output only.
+    Output JSON:
+    - product_name
+    - health_score (0-100)
+    - overall_verdict (Good/Moderate/Bad)
+    - verdict_action (Good Choice/Not Ideal/Avoid)
+    - top_reasons (3)
+    - score_breakdown
+    - nutrition_summary (sugar, sodium, protein, fiber, saturated_fat)
+    - ingredient_breakdown (name, simple_name, category, what_it_is, why_used, risk_level, source_type)
+    - suitability_flags (group, status, reason)
+    - better_alternatives_guidance
+    - processing_level
   `;
 
-  const maxRetries = 3;
+  const maxRetries = 5;
   let retryCount = 0;
 
   while (retryCount <= maxRetries) {
+    const model = retryCount >= 3 ? fallbackModel : primaryModel;
     try {
       const response = await ai.models.generateContent({
         model,
@@ -194,18 +211,20 @@ export async function analyzeIngredientsFromText(
 
       return JSON.parse(response.text) as ScanResult;
     } catch (error: any) {
-      const is503 = error?.message?.includes("503") || error?.status === 503 || error?.code === 503;
+      const errorMsg = error?.message || String(error);
+      const isRetryable = errorMsg.includes("503") || errorMsg.includes("429") || errorMsg.includes("high demand") || error?.status === 503 || error?.code === 503;
       
-      if (is503 && retryCount < maxRetries) {
+      if (isRetryable && retryCount < maxRetries) {
         retryCount++;
         const delay = Math.pow(2, retryCount) * 1000;
+        console.warn(`Gemini analysis retry ${retryCount}/${maxRetries} using ${retryCount >= 3 ? fallbackModel : primaryModel} after ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
       throw error;
     }
   }
-  throw new Error("Failed to analyze text after retries.");
+  throw new Error("Failed to analyze text after multiple retries.");
 }
 
 export async function analyzeIngredientLabel(base64Image: string, mimeType: string, mode: AnalysisMode = "General"): Promise<ScanResult> {
