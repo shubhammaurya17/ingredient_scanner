@@ -58,7 +58,7 @@ import {
 } from 'firebase/firestore';
 import { cn } from './lib/utils';
 import { ScanResult, UserProfile, Verdict, SuitabilityStatus, AnalysisMode, Collection } from './types';
-import { analyzeIngredientLabel } from './services/geminiService';
+import { analyzeIngredientLabel, extractIngredientsText, analyzeIngredientsFromText } from './services/geminiService';
 import { resizeImage, generatePlaceholder } from './lib/imageUtils';
 import Markdown from 'react-markdown';
 
@@ -451,6 +451,19 @@ const HomeScreen = ({
             <span className="text-sm text-white/70">Instant AI analysis & health score</span>
           </div>
         </Button>
+        
+        {/* Capture Guidance */}
+        <div className="bg-blue-50/50 rounded-2xl p-4 flex items-start space-x-3 border border-blue-100/50">
+          <Info className="w-5 h-5 text-blue-500 mt-0.5" />
+          <div className="space-y-1">
+            <p className="text-xs font-bold text-blue-900">For faster results:</p>
+            <ul className="text-[10px] text-blue-700 space-y-1 list-disc pl-3">
+              <li>Capture only the ingredients section</li>
+              <li>Ensure good lighting and steady hands</li>
+              <li>Keep the text clear and close</li>
+            </ul>
+          </div>
+        </div>
         
         <div className="grid grid-cols-2 gap-4">
           <Button 
@@ -1379,6 +1392,8 @@ const ResultScreen = ({
     }
   };
 
+  const isAnalyzing = result.health_score === 0;
+
   return (
     <div className="min-h-screen bg-gray-50 pb-24 safe-area-bottom">
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex items-center">
@@ -1391,7 +1406,10 @@ const ResultScreen = ({
              <span className="text-[10px] text-gray-400 font-bold uppercase">
                {result.createdAt ? (typeof result.createdAt.toDate === 'function' ? result.createdAt.toDate().toLocaleDateString() : new Date(result.createdAt).toLocaleDateString()) : new Date().toLocaleDateString()}
              </span>
-             <Badge variant="gray" className="text-[8px] h-4">Scan ID: {result.id?.slice(-4)}</Badge>
+             <Badge variant="gray" className="text-[8px] h-4">Scan ID: {result.id?.slice(-4) || '...'}</Badge>
+             {isAnalyzing && (
+               <Badge variant="blue" className="text-[8px] h-4 animate-pulse">Analyzing...</Badge>
+             )}
           </div>
         </div>
         <div className="flex items-center space-x-1">
@@ -1442,7 +1460,11 @@ const ResultScreen = ({
             </div>
             <div className="w-px h-8 bg-gray-100" />
             <div className="text-center">
-               <span className="text-2xl font-display font-black block text-gray-900">{result.health_score}</span>
+               <span className="text-2xl font-display font-black block text-gray-900">
+                 {isAnalyzing ? (
+                   <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                 ) : result.health_score}
+               </span>
                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">Health Score</span>
             </div>
           </div>
@@ -1456,12 +1478,18 @@ const ResultScreen = ({
         <div className="space-y-3">
           <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Why this result?</h2>
           <div className="space-y-2">
-            {(result.top_reasons || []).map((reason, i) => (
-              <div key={i} className="flex items-start space-x-3 p-3 bg-white rounded-xl border border-gray-100">
-                <div className="mt-1 w-1.5 h-1.5 rounded-full bg-brand-500 flex-shrink-0" />
-                <span className="text-sm font-medium text-gray-700">{reason}</span>
-              </div>
-            ))}
+            {isAnalyzing ? (
+              [1, 2].map(i => (
+                <div key={i} className="h-12 bg-white rounded-xl border border-gray-100 animate-pulse" />
+              ))
+            ) : (
+              (result.top_reasons || []).map((reason, i) => (
+                <div key={i} className="flex items-start space-x-3 p-3 bg-white rounded-xl border border-gray-100">
+                  <div className="mt-1 w-1.5 h-1.5 rounded-full bg-brand-500 flex-shrink-0" />
+                  <span className="text-sm font-medium text-gray-700">{reason}</span>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -1490,14 +1518,23 @@ const ResultScreen = ({
         <div className="space-y-3">
           <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Score Breakdown</h2>
           <Card className="p-4 space-y-3">
-            {(result.score_breakdown || []).map((item, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <span className="text-sm text-gray-600 font-medium">{item.factor}</span>
-                <span className={cn("text-sm font-bold", item.impact < 0 ? "text-red-500" : "text-green-500")}>
-                  {item.impact > 0 ? '+' : ''}{item.impact}
-                </span>
-              </div>
-            ))}
+            {isAnalyzing ? (
+              [1, 2].map(i => (
+                <div key={i} className="flex items-center justify-between animate-pulse">
+                  <div className="h-4 bg-gray-100 rounded w-1/3" />
+                  <div className="h-4 bg-gray-100 rounded w-8" />
+                </div>
+              ))
+            ) : (
+              (result.score_breakdown || []).map((item, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600 font-medium">{item.factor}</span>
+                  <span className={cn("text-sm font-bold", item.impact < 0 ? "text-red-500" : "text-green-500")}>
+                    {item.impact > 0 ? '+' : ''}{item.impact}
+                  </span>
+                </div>
+              ))
+            )}
             <div className="pt-2 border-t border-gray-50 flex items-center justify-between">
                <span className="text-xs font-bold text-gray-400 uppercase">Processing Level</span>
                <Badge variant="gray" className="bg-gray-100 border-none">{result.processing_level || 'Unknown'}</Badge>
@@ -1611,47 +1648,56 @@ const ResultScreen = ({
             </div>
           </div>
           <div className="space-y-3">
-            {(result.ingredient_breakdown || []).map((ing, idx) => (
-              <Card key={idx} className="overflow-hidden border-none shadow-sm">
-                <div className="p-4 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2">
-                        <h3 className="font-bold text-gray-900 truncate">{ing.name}</h3>
-                        {ing.source_type === 'confirmed' ? (
-                          <CheckCircle2 className="w-3 h-3 text-green-500 flex-shrink-0" />
-                        ) : (
-                          <ScanIcon className="w-3 h-3 text-yellow-500 flex-shrink-0" />
-                        )}
+            {isAnalyzing ? (
+              [1, 2, 3].map(i => (
+                <Card key={i} className="p-4 space-y-3 animate-pulse">
+                  <div className="h-4 bg-gray-100 rounded w-1/2" />
+                  <div className="h-10 bg-gray-50 rounded w-full" />
+                </Card>
+              ))
+            ) : (
+              (result.ingredient_breakdown || []).map((ing, idx) => (
+                <Card key={idx} className="overflow-hidden border-none shadow-sm">
+                  <div className="p-4 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2">
+                          <h3 className="font-bold text-gray-900 truncate">{ing.name}</h3>
+                          {ing.source_type === 'confirmed' ? (
+                            <CheckCircle2 className="w-3 h-3 text-green-500 flex-shrink-0" />
+                          ) : (
+                            <ScanIcon className="w-3 h-3 text-yellow-500 flex-shrink-0" />
+                          )}
+                        </div>
+                        <p className="text-[10px] text-gray-500 font-medium uppercase tracking-tight">{ing.simple_name} • {ing.category}</p>
                       </div>
-                      <p className="text-[10px] text-gray-500 font-medium uppercase tracking-tight">{ing.simple_name} • {ing.category}</p>
+                      <Badge 
+                        variant={ing.risk_level === 'Low' ? 'green' : ing.risk_level === 'Medium' ? 'yellow' : 'red'}
+                        className="text-[8px] h-5"
+                      >
+                        {ing.risk_level} Risk
+                      </Badge>
                     </div>
-                    <Badge 
-                      variant={ing.risk_level === 'Low' ? 'green' : ing.risk_level === 'Medium' ? 'yellow' : 'red'}
-                      className="text-[8px] h-5"
-                    >
-                      {ing.risk_level} Risk
-                    </Badge>
-                  </div>
-                  
-                  <div className="text-xs text-gray-600 leading-relaxed">
-                    <p className="font-bold text-gray-900 mb-1">What it is:</p>
-                    {ing.what_it_is}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 pt-2">
-                    <div className="p-2 bg-gray-50 rounded-lg">
-                       <span className="text-[8px] font-black text-gray-400 uppercase block mb-1">Why used</span>
-                       <span className="text-[10px] text-gray-700 font-medium leading-tight">{ing.why_used}</span>
+                    
+                    <div className="text-xs text-gray-600 leading-relaxed">
+                      <p className="font-bold text-gray-900 mb-1">What it is:</p>
+                      {ing.what_it_is}
                     </div>
-                    <div className="p-2 bg-gray-50 rounded-lg">
-                       <span className="text-[8px] font-black text-gray-400 uppercase block mb-1">Quantity Note</span>
-                       <span className="text-[10px] text-gray-700 font-medium leading-tight italic">{ing.estimated_quantity_note}</span>
+  
+                    <div className="grid grid-cols-2 gap-2 pt-2">
+                      <div className="p-2 bg-gray-50 rounded-lg">
+                         <span className="text-[8px] font-black text-gray-400 uppercase block mb-1">Why used</span>
+                         <span className="text-[10px] text-gray-700 font-medium leading-tight">{ing.why_used}</span>
+                      </div>
+                      <div className="p-2 bg-gray-50 rounded-lg">
+                         <span className="text-[8px] font-black text-gray-400 uppercase block mb-1">Quantity Note</span>
+                         <span className="text-[10px] text-gray-700 font-medium leading-tight italic">{ing.estimated_quantity_note}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              ))
+            )}
           </div>
         </div>
 
@@ -1676,6 +1722,7 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState<string>('');
   const [currentResult, setCurrentResult] = useState<ScanResult | null>(null);
+  const [partialResult, setPartialResult] = useState<Partial<ScanResult> | null>(null);
   const [comparisonResult, setComparisonResult] = useState<ScanResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'date' | 'score'>('date');
@@ -1789,28 +1836,83 @@ export default function App() {
 
     setIsProcessing(true);
     setProcessingStep('Reading image...');
+    setPartialResult(null);
     setError(null);
     
     try {
       setProcessingStep('Optimizing image...');
       // 1. Generate placeholder and analysis image concurrently for speed
+      // Increased size to 1024 for better OCR accuracy while keeping compression high
       const [base64, placeholder] = await Promise.all([
-        resizeImage(file, 700, 700, 0.5),
+        resizeImage(file, 1024, 1024, 0.5),
         generatePlaceholder(file)
       ]);
       
-      setProcessingStep('AI analysis in progress...');
-      // 2. Start analysis and thumbnail generation concurrently
-      const analysisPromise = analyzeIngredientLabel(base64, 'image/jpeg', analysisMode);
+      setProcessingStep('Extracting ingredients...');
       const thumbnailPromise = resizeImage(base64, 300, 300, 0.4);
 
-      // 3. Wait for analysis
-      const analysis = await analysisPromise;
+      // 2. Step 1: Extract text first
+      const extraction = await extractIngredientsText(base64, 'image/jpeg');
+      
+      // Show partial result immediately
+      const tempPartial: ScanResult = {
+        product_name: extraction.product_name,
+        ingredients_text: extraction.ingredients_text,
+        nutrition_text: extraction.nutrition_text,
+        imageUrl: base64,
+        placeholderUrl: placeholder,
+        // Mock required fields for ResultScreen
+        overall_verdict: 'Moderate',
+        verdict_action: 'Not Ideal',
+        health_score: 0, // 0 will trigger loading state in UI
+        confidence_level: 'Moderate',
+        top_reasons: ['Analyzing ingredients...'],
+        score_breakdown: [],
+        nutrition_summary: {
+          sugar: { value: '...', level: 'Moderate' },
+          sodium: { value: '...', level: 'Moderate' },
+          protein: { value: '...', level: 'Moderate' },
+          fiber: { value: '...', level: 'Moderate' },
+          saturated_fat: { value: '...', level: 'Moderate' },
+        },
+        suitability_flags: [],
+        better_alternatives_guidance: 'Analyzing...',
+        ingredient_breakdown: [],
+        why_summary: 'Extracting deep insights from ingredients...',
+        userId: user.uid,
+        createdAt: { seconds: Date.now() / 1000 },
+        processing_level: 'Analyzing...',
+        raw_ocr_text: extraction.ingredients_text,
+        confidence_reasons: [],
+        confirmed_facts: [],
+        ai_estimates: [],
+        ingredient_risk_score: 0,
+        ocr_confidence: 0,
+        analysis_confidence: 0,
+        allergen_flags: [],
+        warnings: []
+      };
+      
+      if (scanningForSlot === null) {
+        setCurrentResult(tempPartial);
+        setIsProcessing(false);
+      }
+      
+      setProcessingStep('Analyzing ingredients...');
+      // 3. Step 2: Analyze from text
+      const analysis = await analyzeIngredientsFromText(
+        extraction.product_name,
+        extraction.ingredients_text,
+        extraction.nutrition_text,
+        analysisMode
+      );
       
       // 4. Show results IMMEDIATELY to user with a temporary ID
       const tempId = `temp-${Date.now()}`;
       const initialResult = { 
         ...analysis, 
+        ingredients_text: extraction.ingredients_text,
+        nutrition_text: extraction.nutrition_text,
         imageUrl: base64, 
         placeholderUrl: placeholder,
         id: tempId, 
@@ -1820,15 +1922,18 @@ export default function App() {
       if (scanningForSlot === 1) {
         setCompareP1(initialResult);
         setScanningForSlot(null);
+        setIsProcessing(false);
       } else if (scanningForSlot === 2) {
         setCompareP2(initialResult);
         setScanningForSlot(null);
+        setIsProcessing(false);
       } else {
         setCurrentResult(initialResult);
       }
       
-      // Stop processing state so user can interact with results
+      // Stop processing state
       setIsProcessing(false);
+      setPartialResult(null);
 
       // 5. Background: Save to Firestore without blocking the UI
       (async () => {
@@ -1907,18 +2012,57 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center p-8 text-center"
+            className="fixed inset-0 z-50 bg-white/95 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center"
           >
-            <div className="relative w-24 h-24 mb-8">
+            <div className="relative w-32 h-32 mb-8">
               <div className="absolute inset-0 border-4 border-brand-100 rounded-full" />
               <div className="absolute inset-0 border-4 border-brand-600 rounded-full border-t-transparent animate-spin" />
               <div className="absolute inset-0 flex items-center justify-center">
-                <ScanIcon className="w-10 h-10 text-brand-600" />
+                <ScanIcon className="w-12 h-12 text-brand-600" />
+              </div>
+              
+              {/* Step Indicators */}
+              <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 flex space-x-1">
+                {['Reading', 'Optimizing', 'Extracting', 'Analyzing'].map((step, i) => (
+                  <div 
+                    key={step} 
+                    className={cn(
+                      "w-2 h-2 rounded-full transition-colors duration-500",
+                      processingStep.includes(step) ? "bg-brand-600 scale-125" : "bg-brand-100"
+                    )} 
+                  />
+                ))}
               </div>
             </div>
-            <h2 className="text-2xl font-display font-bold text-gray-900 mb-2">Analyzing Ingredients</h2>
-            <p className="text-brand-600 font-bold mb-4 animate-pulse">{processingStep}</p>
-            <p className="text-gray-500 text-sm">Our AI is decoding the label and calculating health scores. This takes a few seconds...</p>
+
+            <h2 className="text-2xl font-display font-bold text-gray-900 mb-2">
+              {partialResult?.product_name || "Analyzing Label"}
+            </h2>
+            
+            <div className="space-y-4 w-full max-w-xs">
+              <div className="bg-brand-50 rounded-2xl p-4 border border-brand-100">
+                <p className="text-brand-600 font-bold text-sm animate-pulse uppercase tracking-widest">
+                  {processingStep}
+                </p>
+              </div>
+
+              {partialResult?.ingredients_text && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-left bg-gray-50 rounded-xl p-3 border border-gray-100"
+                >
+                  <span className="text-[10px] font-black text-gray-400 uppercase block mb-1">Extracted Ingredients:</span>
+                  <p className="text-[10px] text-gray-600 line-clamp-3 italic">
+                    {partialResult.ingredients_text}
+                  </p>
+                </motion.div>
+              )}
+            </div>
+
+            <p className="text-gray-400 text-xs mt-8 max-w-[200px]">
+              Our AI is decoding the label and calculating health scores.
+            </p>
           </motion.div>
         )}
 

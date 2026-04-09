@@ -58,6 +58,8 @@ export interface ScanResult {
   allergen_flags: string[];
   warnings: string[];
   raw_ocr_text: string;
+  ingredients_text?: string;
+  nutrition_text?: string;
   imageUrl: string;
   placeholderUrl?: string;
   userId: string;
