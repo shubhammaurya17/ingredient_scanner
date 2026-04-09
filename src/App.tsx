@@ -336,7 +336,8 @@ const HomeScreen = ({
   totalScans,
   currentMode,
   onModeChange,
-  onViewHistory
+  onViewHistory,
+  onProfileClick
 }: { 
   onScan: () => void, 
   onUpload: () => void, 
@@ -345,7 +346,8 @@ const HomeScreen = ({
   totalScans: number,
   currentMode: AnalysisMode,
   onModeChange: (mode: AnalysisMode) => void,
-  onViewHistory: () => void
+  onViewHistory: () => void,
+  onProfileClick: () => void
 }) => {
   const modes: { id: AnalysisMode; label: string; icon: any; color: string }[] = [
     { id: 'General', label: 'General', icon: ScanIcon, color: 'bg-blue-50 text-blue-600' },
@@ -363,13 +365,16 @@ const HomeScreen = ({
           </h1>
           <p className="text-gray-500">What are we eating today?</p>
         </div>
-        <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center border-2 border-white shadow-sm overflow-hidden">
+        <button 
+          onClick={onProfileClick}
+          className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center border-2 border-white shadow-sm overflow-hidden active:scale-90 transition-transform"
+        >
           {auth.currentUser?.photoURL ? (
             <img src={auth.currentUser.photoURL} alt="Profile" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
           ) : (
             <User className="w-5 h-5 text-brand-600" />
           )}
-        </div>
+        </button>
       </header>
 
       {/* Mode Selector */}
@@ -1624,7 +1629,8 @@ export default function App() {
     });
   }, [scans, sortBy, sortDirection]);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -1847,14 +1853,15 @@ export default function App() {
           >
             {activeTab === 'home' && (
               <HomeScreen 
-                onScan={() => fileInputRef.current?.click()} 
-                onUpload={() => fileInputRef.current?.click()} 
+                onScan={() => cameraInputRef.current?.click()} 
+                onUpload={() => galleryInputRef.current?.click()} 
                 recentScans={scans.slice(0, 3)} 
                 onSelectScan={(scan) => setCurrentResult(scan)}
                 totalScans={scans.length}
                 currentMode={analysisMode}
                 onModeChange={setAnalysisMode}
                 onViewHistory={() => setActiveTab('history')}
+                onProfileClick={() => setActiveTab('profile')}
               />
             )}
 
@@ -1868,7 +1875,7 @@ export default function App() {
                 onCompare={(p1, p2) => setComparisonResult([p1, p2])}
                 onScan={(slot) => {
                   setScanningForSlot(slot);
-                  fileInputRef.current?.click();
+                  cameraInputRef.current?.click();
                 }}
               />
             )}
@@ -1988,11 +1995,20 @@ export default function App() {
 
       <input 
         type="file" 
-        ref={fileInputRef} 
-        onChange={handleImageUpload} 
         accept="image/*" 
-        className="hidden"
+        capture="environment"
+        className="hidden" 
+        ref={cameraInputRef} 
+        onChange={handleImageUpload}
         id="camera-input"
+      />
+      <input 
+        type="file" 
+        accept="image/*" 
+        className="hidden" 
+        ref={galleryInputRef} 
+        onChange={handleImageUpload}
+        id="gallery-input"
       />
 
       {!currentResult && (
@@ -2012,9 +2028,9 @@ export default function App() {
             <span className="text-[10px] font-bold uppercase tracking-wider">Compare</span>
           </button>
 
-          {/* Central Plus Button */}
+          {/* Central Plus Button - Forces Camera */}
           <button 
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => cameraInputRef.current?.click()}
             className="flex flex-col items-center -mt-8"
           >
             <div className="w-14 h-14 bg-brand-600 rounded-full flex items-center justify-center shadow-lg shadow-brand-200 border-4 border-white active:scale-95 transition-transform">

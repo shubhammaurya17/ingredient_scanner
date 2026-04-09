@@ -101,6 +101,12 @@ export async function analyzeIngredientLabel(base64Image: string, mimeType: stri
     - Be critical of Palm Oil/Vanaspati.
     - RULE: If sugar > 50% weight, verdict MUST be "Avoid".
     
+    Nutrition Snapshot Extraction:
+    - Extract values for Sugar, Sodium, Protein, Fiber, and Saturated Fat.
+    - IMPORTANT: If the label provides values "per 100g", use those directly. If it provides values "per serving", calculate the equivalent "per 100g" if the serving size is clear, otherwise state the value as is but specify the unit.
+    - Be extremely precise with numbers. If a value is "0g", report "0g".
+    - If a value is not found, estimate based on ingredients but mark as estimate in the summary.
+    
     Tasks:
     1. OCR text.
     2. Identify ingredients and additives.
@@ -118,26 +124,48 @@ export async function analyzeIngredientLabel(base64Image: string, mimeType: stri
     14. JSON output only.
   `;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: [
-      {
-        parts: [
-          { text: prompt },
-          { inlineData: { data: base64Image.split(',')[1] || base64Image, mimeType } }
-        ]
-      }
-    ],
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: SCAN_RESULT_SCHEMA,
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-    }
-  });
+  const maxRetries = 3;
+  let retryCount = 0;
 
-  if (!response.text) {
-    throw new Error("No response from Gemini");
+  while (retryCount <= maxRetries) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              { inlineData: { data: base64Image.split(',')[1] || base64Image, mimeType } }
+            ]
+          }
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: SCAN_RESULT_SCHEMA,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+        }
+      });
+
+      if (!response.text) {
+        throw new Error("No response from Gemini");
+      }
+
+      return JSON.parse(response.text) as ScanResult;
+    } catch (error: any) {
+      const is503 = error?.message?.includes("503") || error?.status === 503 || error?.code === 503;
+      
+      if (is503 && retryCount < maxRetries) {
+        retryCount++;
+        const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff: 2s, 4s, 8s
+        console.warn(`Gemini 503 error (high demand). Retrying in ${delay}ms... (Attempt ${retryCount}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      console.error("Gemini analysis error:", error);
+      throw error;
+    }
   }
 
-  return JSON.parse(response.text) as ScanResult;
+  throw new Error("Failed to analyze image after multiple retries due to high demand.");
 }
