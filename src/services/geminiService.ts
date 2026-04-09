@@ -95,7 +95,7 @@ const EXTRACTION_SCHEMA = {
 
 export async function extractIngredientsText(base64Image: string, mimeType: string): Promise<{ product_name: string, ingredients_text: string, nutrition_text?: string }> {
   const primaryModel = "gemini-3-flash-preview";
-  const fallbackModel = "gemini-1.5-flash";
+  const fallbackModel = "gemini-flash-latest";
   const prompt = `
     OCR this food label. 
     1. Extract Product Name.
@@ -157,7 +157,7 @@ export async function analyzeIngredientsFromText(
   mode: AnalysisMode = "General"
 ): Promise<ScanResult> {
   const primaryModel = "gemini-3-flash-preview";
-  const fallbackModel = "gemini-1.5-flash";
+  const fallbackModel = "gemini-flash-latest";
   
   const modeInstructions: Record<string, string> = {
     General: "General health.",
@@ -228,7 +228,8 @@ export async function analyzeIngredientsFromText(
 }
 
 export async function analyzeIngredientLabel(base64Image: string, mimeType: string, mode: AnalysisMode = "General"): Promise<ScanResult> {
-  const model = "gemini-3-flash-preview";
+  const primaryModel = "gemini-3-flash-preview";
+  const fallbackModel = "gemini-flash-latest";
   
   const modeInstructions: Record<string, string> = {
     General: "General consumer health analysis.",
@@ -268,10 +269,11 @@ export async function analyzeIngredientLabel(base64Image: string, mimeType: stri
     14. JSON output only.
   `;
 
-  const maxRetries = 3;
+  const maxRetries = 5;
   let retryCount = 0;
 
   while (retryCount <= maxRetries) {
+    const model = retryCount >= 3 ? fallbackModel : primaryModel;
     try {
       const response = await ai.models.generateContent({
         model,
@@ -296,12 +298,13 @@ export async function analyzeIngredientLabel(base64Image: string, mimeType: stri
 
       return JSON.parse(response.text) as ScanResult;
     } catch (error: any) {
-      const is503 = error?.message?.includes("503") || error?.status === 503 || error?.code === 503;
+      const errorMsg = error?.message || String(error);
+      const isRetryable = errorMsg.includes("503") || errorMsg.includes("429") || errorMsg.includes("high demand") || error?.status === 503 || error?.code === 503;
       
-      if (is503 && retryCount < maxRetries) {
+      if (isRetryable && retryCount < maxRetries) {
         retryCount++;
         const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff: 2s, 4s, 8s
-        console.warn(`Gemini 503 error (high demand). Retrying in ${delay}ms... (Attempt ${retryCount}/${maxRetries})`);
+        console.warn(`Gemini analysis retry ${retryCount}/${maxRetries} using ${retryCount >= 3 ? fallbackModel : primaryModel} after ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
