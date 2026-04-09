@@ -363,7 +363,7 @@ const HomeScreen = ({
           <h1 className="text-2xl font-display font-bold text-gray-900">
             Hello, {auth.currentUser?.displayName?.split(' ')[0] || auth.currentUser?.phoneNumber?.slice(-10) || 'User'}
           </h1>
-          <p className="text-gray-500">What are we eating today?</p>
+          <p className="text-gray-500">Scan. Compare. Choose Better</p>
         </div>
         <button 
           onClick={onProfileClick}
@@ -1716,43 +1716,68 @@ export default function App() {
     setError(null);
     
     try {
-      setProcessingStep('Optimizing image size...');
-      // Pass the File object directly to resizeImage for better HEIC support and memory efficiency
+      setProcessingStep('Optimizing image...');
+      // 1. Resize for analysis (800px is optimal for OCR)
       const base64 = await resizeImage(file, 800, 800);
       
-      setProcessingStep('AI decoding ingredients...');
-      // Since resizeImage always returns image/jpeg, we should pass 'image/jpeg' to the service
-      const analysis = await analyzeIngredientLabel(base64, 'image/jpeg', analysisMode);
-      
-      setProcessingStep('Finalizing results...');
-      // Create a smaller thumbnail for Firestore storage to avoid 1MB limit
-      const thumbnail = await resizeImage(base64, 400, 400);
+      setProcessingStep('AI analysis in progress...');
+      // 2. Start analysis and thumbnail generation concurrently
+      const analysisPromise = analyzeIngredientLabel(base64, 'image/jpeg', analysisMode);
+      const thumbnailPromise = resizeImage(base64, 400, 400);
 
-      // Save to Firestore
-      const { imageUrl, ...analysisWithoutImage } = analysis;
-      const scanDoc = {
-        ...analysisWithoutImage,
-        userId: user.uid,
-        imageUrl: thumbnail, // Store resized thumbnail
-        createdAt: serverTimestamp()
-      };
+      // 3. Wait for analysis
+      const analysis = await analysisPromise;
       
-      const docRef = await addDoc(collection(db, 'scans'), scanDoc);
-      const finalResult = { ...scanDoc, imageUrl: base64, id: docRef.id, createdAt: { seconds: Date.now() / 1000 } } as ScanResult;
+      // 4. Show results IMMEDIATELY to user with a temporary ID
+      const tempId = `temp-${Date.now()}`;
+      const initialResult = { 
+        ...analysis, 
+        imageUrl: base64, 
+        id: tempId, 
+        createdAt: { seconds: Date.now() / 1000 } 
+      } as ScanResult;
 
       if (scanningForSlot === 1) {
-        setCompareP1(finalResult);
+        setCompareP1(initialResult);
         setScanningForSlot(null);
       } else if (scanningForSlot === 2) {
-        setCompareP2(finalResult);
+        setCompareP2(initialResult);
         setScanningForSlot(null);
       } else {
-        setCurrentResult(finalResult);
+        setCurrentResult(initialResult);
       }
+      
+      // Stop processing state so user can interact with results
+      setIsProcessing(false);
+
+      // 5. Background: Save to Firestore without blocking the UI
+      (async () => {
+        try {
+          const thumbnail = await thumbnailPromise;
+          const { imageUrl, ...analysisWithoutImage } = analysis;
+          const scanDoc = {
+            ...analysisWithoutImage,
+            userId: user.uid,
+            imageUrl: thumbnail, // Store resized thumbnail
+            createdAt: serverTimestamp()
+          };
+          
+          const docRef = await addDoc(collection(db, 'scans'), scanDoc);
+          const finalResult = { ...scanDoc, imageUrl: base64, id: docRef.id, createdAt: { seconds: Date.now() / 1000 } } as ScanResult;
+
+          // Silently update the state with the real Firestore ID
+          if (scanningForSlot === 1) setCompareP1(finalResult);
+          else if (scanningForSlot === 2) setCompareP2(finalResult);
+          else setCurrentResult(prev => prev?.id === tempId ? finalResult : prev);
+          
+        } catch (fsErr) {
+          console.error("Background Firestore save failed:", fsErr);
+        }
+      })();
+
     } catch (err: any) {
       console.error("Analysis failed", err);
       setError(`Analysis failed: ${err.message || "Please try a clearer photo."}`);
-    } finally {
       setIsProcessing(false);
     }
   };
