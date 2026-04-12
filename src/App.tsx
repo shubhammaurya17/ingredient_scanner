@@ -29,7 +29,8 @@ import {
   ThumbsDown,
   Activity,
   Share2,
-  RefreshCw
+  RefreshCw,
+  ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { auth, db } from './lib/firebase';
@@ -59,7 +60,7 @@ import {
 } from 'firebase/firestore';
 import { cn } from './lib/utils';
 import { ScanResult, UserProfile, Verdict, SuitabilityStatus, AnalysisMode, Collection } from './types';
-import { analyzeIngredientLabel, extractIngredientsText, analyzeIngredientsFromText } from './services/geminiService';
+import { analyzeIngredientLabel, extractIngredientsText, analyzeIngredientsFromText, getProductRecommendations } from './services/geminiService';
 import { resizeImage, generatePlaceholder } from './lib/imageUtils';
 import Markdown from 'react-markdown';
 
@@ -1617,6 +1618,44 @@ const ResultScreen = ({
                 </div>
               </div>
             </Card>
+
+            {/* Recommended Products Block */}
+            <div className="space-y-2 mt-4">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Recommended Products</p>
+              {isAnalyzing ? (
+                <div className="flex items-center space-x-3 p-4 bg-white rounded-2xl border border-gray-100 animate-pulse">
+                  <div className="w-5 h-5 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs text-gray-500 font-medium">Finding better alternatives...</span>
+                </div>
+              ) : result.recommended_products && result.recommended_products.length > 0 ? (
+                <div className="space-y-2">
+                  {result.recommended_products.map((product, idx) => (
+                    <Card key={idx} className="p-3 border-none shadow-sm bg-white">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h3 className="text-sm font-bold text-gray-900">
+                            {product.product_name} <span className="text-gray-400 font-medium">({product.brand})</span>
+                          </h3>
+                          <div className="flex items-center mt-1 text-brand-600">
+                            <ArrowRight className="w-3 h-3 mr-1" />
+                            <p className="text-[11px] font-medium leading-tight">{product.reason}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : !result.recommended_products && !isAnalyzing ? (
+                <div className="flex items-center space-x-3 p-4 bg-white rounded-2xl border border-gray-100 animate-pulse">
+                  <div className="w-5 h-5 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs text-gray-500 font-medium">Finding better alternatives...</span>
+                </div>
+              ) : (
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                  <p className="text-[10px] text-gray-500 font-medium italic">Product recommendations coming soon</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1951,7 +1990,29 @@ export default function App() {
       setIsProcessing(false);
       setPartialResult(null);
 
-      // 5. Background: Save to Firestore without blocking the UI
+      // 5. Background: Fetch recommendations asynchronously
+      (async () => {
+        try {
+          const recommendations = await getProductRecommendations(
+            extraction.product_name,
+            extraction.ingredients_text,
+            analysisMode
+          );
+          
+          // Update the current result with recommendations
+          if (scanningForSlot === null) {
+            setCurrentResult(prev => prev ? { ...prev, recommended_products: recommendations } : null);
+          } else if (scanningForSlot === 1) {
+            setCompareP1(prev => prev ? { ...prev, recommended_products: recommendations } : null);
+          } else if (scanningForSlot === 2) {
+            setCompareP2(prev => prev ? { ...prev, recommended_products: recommendations } : null);
+          }
+        } catch (err) {
+          console.error("Failed to fetch recommendations:", err);
+        }
+      })();
+
+      // 6. Background: Save to Firestore without blocking the UI
       (async () => {
         try {
           const { imageUrl, ...analysisWithoutImage } = analysis;

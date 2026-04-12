@@ -30,6 +30,12 @@ export interface ScoreImpact {
   impact: number;
 }
 
+export interface ProductRecommendation {
+  product_name: string;
+  brand: string;
+  reason: string;
+}
+
 export interface ScanResult {
   id?: string;
   product_name: string;
@@ -69,6 +75,7 @@ export interface ScanResult {
   isFavorite?: boolean;
   collectionId?: string;
   better_alternatives_guidance?: string;
+  recommended_products?: ProductRecommendation[];
 }
 
 export interface Collection {

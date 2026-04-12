@@ -1,7 +1,20 @@
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
-import { ScanResult, AnalysisMode } from "../types";
+import { ScanResult, AnalysisMode, ProductRecommendation } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+
+const RECOMMENDATION_SCHEMA = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      product_name: { type: Type.STRING },
+      brand: { type: Type.STRING },
+      reason: { type: Type.STRING }
+    },
+    required: ["product_name", "brand", "reason"]
+  }
+};
 
 const SCAN_RESULT_SCHEMA = {
   type: Type.OBJECT,
@@ -78,7 +91,8 @@ const SCAN_RESULT_SCHEMA = {
     warnings: { type: Type.ARRAY, items: { type: Type.STRING } },
     raw_ocr_text: { type: Type.STRING },
     processing_level: { type: Type.STRING },
-    better_alternatives_guidance: { type: Type.STRING }
+    better_alternatives_guidance: { type: Type.STRING },
+    recommended_products: RECOMMENDATION_SCHEMA
   },
   required: ["product_name", "overall_verdict", "verdict_action", "health_score", "ingredient_breakdown", "confidence_level", "top_reasons", "score_breakdown", "nutrition_summary", "suitability_flags", "better_alternatives_guidance"]
 };
@@ -327,4 +341,91 @@ export async function analyzeIngredientLabel(base64Image: string, mimeType: stri
   }
 
   throw new Error("Failed to analyze image after multiple retries due to high demand.");
+}
+
+export async function getProductRecommendations(
+  productName: string,
+  ingredients: string,
+  mode: AnalysisMode = "General"
+): Promise<ProductRecommendation[]> {
+  const primaryModel = "gemini-3.1-flash-lite-preview";
+  const fallbackModel = "gemini-flash-latest";
+
+  const primaryPrompt = `
+    Based on the following food product, suggest 2-5 safer and healthier product alternatives available in India.
+    Product Name: ${productName}
+    Ingredients: ${ingredients}
+    Mode: ${mode}
+    
+    Structure your response as a JSON array of objects:
+    [
+      {
+        "product_name": "Specific Product Name",
+        "brand": "Brand Name",
+        "reason": "Short, specific reason why it's better (e.g., 'No added sugar', 'Whole grain based')"
+      }
+    ]
+    
+    Rules:
+    - Must be real products available in India.
+    - Must be in the same category.
+    - Prioritize actionable, real-world product recommendations over generic advice.
+    - No hallucinations.
+  `;
+
+  const fallbackPrompt = `
+    The previous attempt to find healthy alternatives for "${productName}" was too generic or empty.
+    Suggest 3-5 REAL packaged food products available in India that are healthier alternatives to "${productName}".
+    Ingredients of original: ${ingredients}
+    
+    STRICT CONSTRAINTS:
+    - Suggest REAL brands and product names (e.g., 'Kikkoman Less Sodium Soy Sauce' instead of 'Organic Soy Sauce').
+    - Provide short, specific reasons why each is better.
+    - Focus on widely available Indian or global brands in India.
+    - JSON array only.
+  `;
+
+  async function callAI(prompt: string, model: string): Promise<ProductRecommendation[]> {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: RECOMMENDATION_SCHEMA,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+        }
+      });
+      if (!response.text) return [];
+      return JSON.parse(response.text) as ProductRecommendation[];
+    } catch (error) {
+      console.error("AI Recommendation call failed:", error);
+      return [];
+    }
+  }
+
+  // Layer 1: Primary AI Call
+  let results = await callAI(primaryPrompt, primaryModel);
+
+  // Validation Check
+  const isValid = (recs: ProductRecommendation[]) => {
+    if (!recs || recs.length === 0) return false;
+    const isGeneric = recs.some(r => r.product_name.toLowerCase().includes("organic") && !r.brand);
+    const hasBrand = recs.every(r => r.brand && r.brand.length > 1);
+    return !isGeneric && hasBrand;
+  };
+
+  if (!isValid(results)) {
+    console.warn("Primary recommendations invalid or generic, triggering fallback...");
+    // Layer 2: Fallback AI Call
+    const fallbackResults = await callAI(fallbackPrompt, fallbackModel);
+    if (isValid(fallbackResults)) {
+      results = fallbackResults;
+    }
+  }
+
+  // Final Merge & Cleanup
+  const uniqueResults = results.filter((v, i, a) => a.findIndex(t => t.product_name === v.product_name && t.brand === v.brand) === i);
+  
+  return uniqueResults.slice(0, 5);
 }
