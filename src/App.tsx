@@ -30,7 +30,9 @@ import {
   Activity,
   Share2,
   RefreshCw,
-  ArrowRight
+  ArrowRight,
+  MessageSquare,
+  Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { auth, db } from './lib/firebase';
@@ -65,6 +67,227 @@ import { resizeImage, generatePlaceholder } from './lib/imageUtils';
 import Markdown from 'react-markdown';
 
 // --- Components ---
+
+// --- Components ---
+
+const FeedbackSystem = ({ 
+  context, 
+  onClose 
+}: { 
+  context: {
+    screenName: string;
+    productName?: string;
+    productId?: string;
+    comparisonProduct1?: string;
+    comparisonProduct2?: string;
+    feedbackType?: 'helpful' | 'not_helpful' | 'report';
+  },
+  onClose: () => void
+}) => {
+  const [step, setStep] = useState<'category' | 'form' | 'success'>('category');
+  const [category, setCategory] = useState('');
+  const [message, setMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const categories = [
+    { id: 'incorrect_ingredients', label: 'Incorrect ingredients', icon: AlertTriangle },
+    { id: 'wrong_product', label: 'Wrong product matched', icon: Search },
+    { id: 'not_found', label: 'Product not found', icon: X },
+    { id: 'wrong_analysis', label: 'Analysis seems wrong', icon: Activity },
+    { id: 'wrong_score', label: 'Score doesn\'t make sense', icon: Target },
+    { id: 'wrong_comparison', label: 'Comparison seems wrong', icon: Scale },
+    { id: 'bug', label: 'App bug / technical issue', icon: AlertCircle },
+    { id: 'feature', label: 'Feature request', icon: Plus },
+    { id: 'other', label: 'Other', icon: MessageSquare },
+  ];
+
+  const filteredCategories = categories.filter(cat => {
+    if (context.screenName === 'ResultScreen') {
+      return ['incorrect_ingredients', 'wrong_product', 'wrong_analysis', 'wrong_score', 'bug', 'other'].includes(cat.id);
+    }
+    if (context.screenName === 'ComparisonResultScreen') {
+      return ['wrong_comparison', 'wrong_analysis', 'bug', 'other'].includes(cat.id);
+    }
+    if (context.screenName === 'ScanFailed') {
+      return ['not_found', 'bug', 'other'].includes(cat.id);
+    }
+    return true;
+  });
+
+  const handleSubmit = async () => {
+    if (!category || !auth.currentUser) return;
+    setIsSubmitting(true);
+    try {
+      await addDoc(collection(db, 'feedback'), {
+        userId: auth.currentUser.uid,
+        screenName: context.screenName,
+        feedbackType: context.feedbackType || 'report',
+        feedbackCategory: category,
+        message,
+        productName: context.productName || null,
+        productId: context.productId || null,
+        comparisonProduct1: context.comparisonProduct1 || null,
+        comparisonProduct2: context.comparisonProduct2 || null,
+        createdAt: serverTimestamp(),
+        timestamp: Date.now(),
+        appVersion: '1.0.0'
+      });
+      setStep('success');
+    } catch (err) {
+      console.error('Feedback submission failed:', err);
+      alert('Something went wrong. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm p-4">
+      <motion.div 
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        className="w-full max-w-md bg-white rounded-t-[2.5rem] p-6 content-bottom-spacing shadow-2xl relative"
+      >
+        <button 
+          onClick={onClose}
+          className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full text-gray-400 hover:text-gray-600"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {step === 'category' && (
+          <div className="space-y-6">
+            <div className="text-center pt-2">
+              <h2 className="text-xl font-bold text-gray-900">Tell us what went wrong</h2>
+              <p className="text-sm text-gray-500 mt-1">Your feedback helps us improve product accuracy.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-2 max-h-[40vh] overflow-y-auto pr-1">
+              {filteredCategories.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => {
+                    setCategory(cat.id);
+                    setStep('form');
+                  }}
+                  className="flex items-center space-x-4 p-4 bg-gray-50 rounded-2xl hover:bg-brand-50 hover:text-brand-700 transition-colors text-left group"
+                >
+                  <div className="p-2 bg-white rounded-xl shadow-sm group-hover:bg-brand-100">
+                    <cat.icon className="w-5 h-5 text-gray-400 group-hover:text-brand-600" />
+                  </div>
+                  <span className="font-bold text-sm">{cat.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {step === 'form' && (
+          <div className="space-y-6">
+            <div className="flex items-center space-x-3 pt-2">
+              <button onClick={() => setStep('category')} className="p-2 bg-gray-50 rounded-xl">
+                <ArrowLeft className="w-5 h-5 text-gray-400" />
+              </button>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">More details</h2>
+                <p className="text-xs text-gray-500">Category: {categories.find(c => c.id === category)?.label}</p>
+              </div>
+            </div>
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Tell us more (optional)"
+              className="w-full h-32 p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-500 text-sm resize-none"
+            />
+            <Button 
+              className="w-full" 
+              onClick={handleSubmit} 
+              isLoading={isSubmitting}
+              disabled={isSubmitting}
+            >
+              <Send className="w-5 h-5 mr-2" />
+              Submit Feedback
+            </Button>
+          </div>
+        )}
+
+        {step === 'success' && (
+          <div className="py-12 text-center space-y-4">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle2 className="w-10 h-10 text-green-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900">Thanks!</h2>
+            <p className="text-gray-500 max-w-xs mx-auto">Your feedback has been submitted. We'll use it to improve Ingredia.</p>
+            <Button variant="outline" className="w-full mt-6" onClick={onClose}>Close</Button>
+          </div>
+        )}
+      </motion.div>
+    </div>
+  );
+};
+
+const ImageSourceSelector = ({ 
+  onCamera, 
+  onGallery, 
+  onClose 
+}: { 
+  onCamera: () => void, 
+  onGallery: () => void, 
+  onClose: () => void 
+}) => {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 backdrop-blur-sm p-4">
+      <motion.div 
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        className="w-full max-w-md bg-white rounded-t-[2.5rem] p-6 pb-12 shadow-2xl relative"
+      >
+        <button 
+          onClick={onClose}
+          className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full text-gray-400 hover:text-gray-600"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        <div className="space-y-6">
+          <div className="text-center pt-2">
+            <h2 className="text-xl font-bold text-gray-900">Choose Image Source</h2>
+            <p className="text-sm text-gray-500 mt-1">Select how you want to add the product label.</p>
+          </div>
+          
+          <div className="grid grid-cols-1 gap-3">
+            <button
+              onClick={onCamera}
+              className="flex items-center space-x-4 p-4 bg-brand-50 rounded-2xl hover:bg-brand-100 transition-colors text-left group"
+            >
+              <div className="p-3 bg-white rounded-xl shadow-sm group-hover:bg-brand-50">
+                <Camera className="w-6 h-6 text-brand-600" />
+              </div>
+              <div>
+                <span className="font-bold text-base block">Use Camera</span>
+                <span className="text-xs text-gray-500">Take a fresh photo of the label</span>
+              </div>
+            </button>
+
+            <button
+              onClick={onGallery}
+              className="flex items-center space-x-4 p-4 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-colors text-left group"
+            >
+              <div className="p-3 bg-white rounded-xl shadow-sm group-hover:bg-gray-50">
+                <Upload className="w-6 h-6 text-gray-400 group-hover:text-brand-600" />
+              </div>
+              <div>
+                <span className="font-bold text-base block">Upload from Gallery</span>
+                <span className="text-xs text-gray-500">Choose an existing photo</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 
 const Button = ({ 
   children, 
@@ -397,7 +620,7 @@ const HomeScreen = ({
   ];
 
   return (
-    <div className="p-6 space-y-8 pb-32 safe-area-bottom">
+    <div className="p-6 space-y-8 content-bottom-spacing">
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-display font-bold text-gray-900">
@@ -580,7 +803,7 @@ const CompareScreen = ({
 
   if (selectingFor) {
     return (
-      <div className="min-h-screen bg-gray-50 pb-24 safe-area-bottom">
+      <div className="min-h-screen bg-gray-50 content-bottom-spacing">
         <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex items-center">
           <Button variant="ghost" size="icon" onClick={() => setSelectingFor(null)} className="mr-2">
             <ArrowLeft className="w-6 h-6" />
@@ -624,7 +847,7 @@ const CompareScreen = ({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-32 safe-area-bottom">
+    <div className="min-h-screen bg-gray-50 content-bottom-spacing">
       <div className="p-6 space-y-8">
         <div>
           <h1 className="text-2xl font-display font-bold text-gray-900">Compare</h1>
@@ -885,6 +1108,27 @@ const ComparisonResultScreen = ({ products, onBack }: { products: ScanResult[], 
   const comparison = calculateComparison(p1, p2);
   const betterProduct = comparison.winner;
   const otherProduct = comparison.loser;
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [voted, setVoted] = useState(false);
+
+  const handleQuickFeedback = async (type: 'helpful' | 'not_helpful') => {
+    if (voted || !auth.currentUser) return;
+    setVoted(true);
+    try {
+      await addDoc(collection(db, 'feedback'), {
+        userId: auth.currentUser.uid,
+        screenName: 'ComparisonResultScreen',
+        feedbackType: type,
+        comparisonProduct1: p1.product_name,
+        comparisonProduct2: p2.product_name,
+        createdAt: serverTimestamp(),
+        timestamp: Date.now()
+      });
+      if (type === 'not_helpful') setShowFeedback(true);
+    } catch (err) {
+      console.error('Quick feedback failed:', err);
+    }
+  };
 
   const getMetricWinner = (v1: number, v2: number, better: 'lower' | 'higher') => {
     if (v1 === v2) return null;
@@ -956,7 +1200,7 @@ const ComparisonResultScreen = ({ products, onBack }: { products: ScanResult[], 
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-32 safe-area-bottom">
+    <div className="min-h-screen bg-gray-50 content-bottom-spacing">
       <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex items-center">
         <Button variant="ghost" size="icon" onClick={onBack} className="mr-2">
           <ArrowLeft className="w-6 h-6" />
@@ -1326,6 +1570,53 @@ const ComparisonResultScreen = ({ products, onBack }: { products: ScanResult[], 
             </ul>
           </div>
         </Card>
+
+        {/* Feedback Section */}
+        <div className="space-y-4 pt-4">
+          <div className="text-center space-y-2">
+            <h3 className="text-sm font-bold text-gray-900">Was this comparison useful?</h3>
+            <div className="flex items-center justify-center space-x-3">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className={cn("bg-white", voted && "opacity-50")}
+                onClick={() => handleQuickFeedback('helpful')}
+                disabled={voted}
+              >
+                <ThumbsUp className="w-4 h-4 mr-2 text-green-600" /> Helpful
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className={cn("bg-white", voted && "opacity-50")}
+                onClick={() => handleQuickFeedback('not_helpful')}
+                disabled={voted}
+              >
+                <ThumbsDown className="w-4 h-4 mr-2 text-red-600" /> Not Helpful
+              </Button>
+            </div>
+            <button 
+              onClick={() => setShowFeedback(true)}
+              className="text-[10px] font-bold text-brand-600 uppercase tracking-widest hover:underline pt-2"
+            >
+              Report Wrong Comparison
+            </button>
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {showFeedback && (
+            <FeedbackSystem 
+              context={{
+                screenName: 'ComparisonResultScreen',
+                comparisonProduct1: p1.product_name,
+                comparisonProduct2: p2.product_name,
+                feedbackType: voted ? 'not_helpful' : 'report'
+              }}
+              onClose={() => setShowFeedback(false)}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -1343,6 +1634,27 @@ const ResultScreen = ({
   isFavorite: boolean 
 }) => {
   const [showFullSuitability, setShowFullSuitability] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [voted, setVoted] = useState(false);
+
+  const handleQuickFeedback = async (type: 'helpful' | 'not_helpful') => {
+    if (voted || !auth.currentUser) return;
+    setVoted(true);
+    try {
+      await addDoc(collection(db, 'feedback'), {
+        userId: auth.currentUser.uid,
+        screenName: 'ResultScreen',
+        feedbackType: type,
+        productName: result.product_name,
+        productId: result.id,
+        createdAt: serverTimestamp(),
+        timestamp: Date.now()
+      });
+      if (type === 'not_helpful') setShowFeedback(true);
+    } catch (err) {
+      console.error('Quick feedback failed:', err);
+    }
+  };
 
   const actionColors = {
     'Good Choice': 'bg-green-600 text-white shadow-green-100',
@@ -1397,7 +1709,7 @@ const ResultScreen = ({
   const isAnalyzing = result.health_score === 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-32 safe-area-bottom">
+    <div className="min-h-screen bg-gray-50 content-bottom-spacing">
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex items-center">
         <Button variant="ghost" size="icon" onClick={onBack} className="mr-2">
           <ArrowLeft className="w-6 h-6" />
@@ -1745,6 +2057,53 @@ const ResultScreen = ({
           <p>AI-estimated data is clearly marked with icons. Confirmed data is extracted directly from the label.</p>
           <p>Disclaimer: This analysis is for educational purposes. Consult a medical professional for dietary advice.</p>
         </div>
+
+        {/* Feedback Section */}
+        <div className="space-y-4 pt-4 border-t border-gray-100">
+          <div className="text-center space-y-3">
+            <h3 className="text-sm font-bold text-gray-900">Was this analysis helpful?</h3>
+            <div className="flex items-center justify-center space-x-3">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className={cn("bg-white", voted && "opacity-50")}
+                onClick={() => handleQuickFeedback('helpful')}
+                disabled={voted}
+              >
+                <ThumbsUp className="w-4 h-4 mr-2 text-green-600" /> Helpful
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className={cn("bg-white", voted && "opacity-50")}
+                onClick={() => handleQuickFeedback('not_helpful')}
+                disabled={voted}
+              >
+                <ThumbsDown className="w-4 h-4 mr-2 text-red-600" /> Not Helpful
+              </Button>
+            </div>
+            <button 
+              onClick={() => setShowFeedback(true)}
+              className="text-[10px] font-bold text-brand-600 uppercase tracking-widest hover:underline"
+            >
+              Report Issue
+            </button>
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {showFeedback && (
+            <FeedbackSystem 
+              context={{
+                screenName: 'ResultScreen',
+                productName: result.product_name,
+                productId: result.id,
+                feedbackType: voted ? 'not_helpful' : 'report'
+              }}
+              onClose={() => setShowFeedback(false)}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -1773,6 +2132,8 @@ export default function App() {
   const [scanningForSlot, setScanningForSlot] = useState<1 | 2 | null>(null);
   const [showCollections, setShowCollections] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [showImageSourceSelector, setShowImageSourceSelector] = useState(false);
   
   const sortedScans = React.useMemo(() => {
     return [...scans].sort((a, b) => {
@@ -2162,20 +2523,29 @@ export default function App() {
                 <X className="w-5 h-5" />
               </Button>
             </div>
-            {lastFile && (
+            <div className="flex items-center mt-2 space-x-2">
+              {lastFile && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-1 bg-white text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={() => {
+                    setError(null);
+                    handleImageUpload(lastFile);
+                  }}
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" /> Retry
+                </Button>
+              )}
               <Button 
-                variant="outline" 
+                variant="secondary" 
                 size="sm" 
-                className="w-full bg-white text-red-600 border-red-200 hover:bg-red-50"
-                onClick={() => {
-                  setError(null);
-                  handleImageUpload(lastFile);
-                }}
+                className="flex-1"
+                onClick={() => setShowFeedback(true)}
               >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Retry Analysis
+                <MessageSquare className="w-4 h-4 mr-2" /> Report
               </Button>
-            )}
+            </div>
           </motion.div>
         )}
 
@@ -2224,13 +2594,13 @@ export default function App() {
                 onCompare={(p1, p2) => setComparisonResult([p1, p2])}
                 onScan={(slot) => {
                   setScanningForSlot(slot);
-                  cameraInputRef.current?.click();
+                  setShowImageSourceSelector(true);
                 }}
               />
             )}
             
             {activeTab === 'history' && (
-              <div className="p-6 space-y-6 pb-32 safe-area-bottom">
+              <div className="p-6 space-y-6 content-bottom-spacing">
                 <div className="flex items-center justify-between">
                   <h1 className="text-2xl font-display font-bold">Scan History</h1>
                   <div className="flex items-center space-x-2">
@@ -2290,7 +2660,7 @@ export default function App() {
             )}
 
             {activeTab === 'profile' && (
-              <div className="p-6 space-y-8 pb-32 safe-area-bottom">
+              <div className="p-6 space-y-8 content-bottom-spacing">
                 <h1 className="text-2xl font-display font-bold">Profile</h1>
                 <div className="flex flex-col items-center space-y-4">
                   <div className="w-24 h-24 rounded-full bg-brand-50 flex items-center justify-center border-4 border-white shadow-lg overflow-hidden">
@@ -2318,6 +2688,39 @@ export default function App() {
                 </div>
 
                 <div className="space-y-3">
+                  <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Help & Feedback</h2>
+                  <Card className="p-4 flex items-center justify-between cursor-pointer" onClick={() => setShowFeedback(true)}>
+                    <div className="flex items-center space-x-3">
+                      <MessageSquare className="w-5 h-5 text-brand-600" />
+                      <span className="font-medium">Send Feedback</span>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-gray-300" />
+                  </Card>
+                  <Card className="p-4 flex items-center justify-between cursor-pointer" onClick={() => setShowFeedback(true)}>
+                    <div className="flex items-center space-x-3">
+                      <AlertCircle className="w-5 h-5 text-brand-600" />
+                      <span className="font-medium">Report a Bug</span>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-gray-300" />
+                  </Card>
+                  <Card className="p-4 flex items-center justify-between cursor-pointer" onClick={() => setShowFeedback(true)}>
+                    <div className="flex items-center space-x-3">
+                      <Zap className="w-5 h-5 text-brand-600" />
+                      <span className="font-medium">Suggest a Feature</span>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-gray-300" />
+                  </Card>
+                  <Card className="p-4 flex items-center justify-between opacity-50">
+                    <div className="flex items-center space-x-3">
+                      <Info className="w-5 h-5 text-brand-600" />
+                      <span className="font-medium">Contact Support</span>
+                    </div>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Coming Soon</span>
+                  </Card>
+                </div>
+
+                <div className="space-y-3">
+                  <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Account</h2>
                   <Card className="p-4 flex items-center justify-between cursor-pointer" onClick={() => setShowCollections(!showCollections)}>
                     <div className="flex items-center space-x-3">
                       <Plus className="w-5 h-5 text-brand-600" />
@@ -2382,9 +2785,12 @@ export default function App() {
             <span className="text-[10px] font-bold uppercase tracking-wider">Compare</span>
           </button>
 
-          {/* Central Plus Button - Forces Camera */}
+          {/* Central Plus Button - Now with Source Selector */}
           <button 
-            onClick={() => cameraInputRef.current?.click()}
+            onClick={() => {
+              setScanningForSlot(null);
+              setShowImageSourceSelector(true);
+            }}
             className="flex flex-col items-center -mt-8"
           >
             <div className="w-14 h-14 bg-brand-600 rounded-full flex items-center justify-center shadow-lg shadow-brand-200 border-4 border-white active:scale-95 transition-transform">
@@ -2409,6 +2815,34 @@ export default function App() {
           </button>
         </nav>
       )}
+
+      <AnimatePresence>
+        {showFeedback && (
+          <FeedbackSystem 
+            context={{ screenName: 'Profile' }}
+            onClose={() => setShowFeedback(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showImageSourceSelector && (
+          <ImageSourceSelector 
+            onCamera={() => {
+              setShowImageSourceSelector(false);
+              cameraInputRef.current?.click();
+            }}
+            onGallery={() => {
+              setShowImageSourceSelector(false);
+              galleryInputRef.current?.click();
+            }}
+            onClose={() => {
+              setShowImageSourceSelector(false);
+              setScanningForSlot(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

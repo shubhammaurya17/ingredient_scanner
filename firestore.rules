@@ -55,6 +55,12 @@ service cloud.firestore {
              data.imageUrl is string;
     }
 
+    function isValidFeedback(data) {
+      return data.keys().hasAll(['userId', 'feedbackType', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.feedbackType in ['helpful', 'not_helpful', 'report'];
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId) && isValidUser(request.resource.data);
@@ -65,6 +71,11 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid);
       allow create: if isAuthenticated() && isValidScan(request.resource.data);
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid);
+    }
+
+    match /feedback/{feedbackId} {
+      allow create: if isAuthenticated() && isValidFeedback(request.resource.data);
+      allow read: if false; // Only admins can read feedback (not implemented here)
     }
   }
 }

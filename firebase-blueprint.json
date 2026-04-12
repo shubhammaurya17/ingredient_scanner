@@ -78,6 +78,29 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "imageUrl", "createdAt"]
+    },
+    "Feedback": {
+      "title": "User Feedback",
+      "description": "Stores user feedback, bug reports, and data corrections.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "screenName": { "type": "string" },
+        "feedbackType": { "type": "string", "enum": ["helpful", "not_helpful", "report"] },
+        "feedbackCategory": { "type": "string" },
+        "message": { "type": "string" },
+        "productName": { "type": "string" },
+        "productId": { "type": "string" },
+        "comparisonProduct1": { "type": "string" },
+        "comparisonProduct2": { "type": "string" },
+        "imageUrl": { "type": "string", "format": "uri" },
+        "helpfulVote": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "appVersion": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["userId", "createdAt", "feedbackType"]
     }
   },
   "firestore": {
@@ -88,6 +111,10 @@
     "scans/{scanId}": {
       "schema": "Scan",
       "description": "Individual scan results"
+    },
+    "feedback/{feedbackId}": {
+      "schema": "Feedback",
+      "description": "User feedback and reports"
     }
   }
 }
