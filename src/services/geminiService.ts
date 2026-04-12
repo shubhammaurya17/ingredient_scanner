@@ -94,21 +94,22 @@ const EXTRACTION_SCHEMA = {
 };
 
 export async function extractIngredientsText(base64Image: string, mimeType: string): Promise<{ product_name: string, ingredients_text: string, nutrition_text?: string }> {
-  const primaryModel = "gemini-3-flash-preview";
+  const primaryModel = "gemini-3.1-flash-lite-preview";
   const fallbackModel = "gemini-flash-latest";
   const prompt = `
-    OCR this food label. 
-    1. Extract Product Name.
-    2. Extract full Ingredients list.
-    3. Extract Nutrition table text.
+    OCR food label. 
+    1. Product Name.
+    2. Ingredients list.
+    3. Nutrition table.
     JSON only.
   `;
 
   const maxRetries = 5;
   let retryCount = 0;
+  let useFallback = false;
 
   while (retryCount <= maxRetries) {
-    const model = retryCount >= 3 ? fallbackModel : primaryModel;
+    const model = (retryCount >= 3 || useFallback) ? fallbackModel : primaryModel;
     try {
       const response = await ai.models.generateContent({
         model,
@@ -123,7 +124,7 @@ export async function extractIngredientsText(base64Image: string, mimeType: stri
         config: {
           responseMimeType: "application/json",
           responseSchema: EXTRACTION_SCHEMA,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
         }
       });
 
@@ -134,12 +135,15 @@ export async function extractIngredientsText(base64Image: string, mimeType: stri
       return JSON.parse(response.text);
     } catch (error: any) {
       const errorMsg = error?.message || String(error);
-      const isRetryable = errorMsg.includes("503") || errorMsg.includes("429") || errorMsg.includes("high demand") || error?.status === 503 || error?.code === 503;
+      const isQuotaExceeded = errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED");
+      const isRetryable = isQuotaExceeded || errorMsg.includes("503") || errorMsg.includes("high demand") || error?.status === 503 || error?.code === 503;
       
       if (isRetryable && retryCount < maxRetries) {
         retryCount++;
-        const delay = Math.pow(2, retryCount) * 1000;
-        console.warn(`Gemini extraction retry ${retryCount}/${maxRetries} using ${retryCount >= 3 ? fallbackModel : primaryModel} after ${delay}ms...`);
+        if (isQuotaExceeded) useFallback = true;
+        
+        const delay = isQuotaExceeded ? 1000 : Math.pow(2, retryCount) * 1000;
+        console.warn(`Gemini extraction retry ${retryCount}/${maxRetries} using ${useFallback ? fallbackModel : primaryModel} after ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
@@ -156,7 +160,7 @@ export async function analyzeIngredientsFromText(
   nutritionText: string | undefined, 
   mode: AnalysisMode = "General"
 ): Promise<ScanResult> {
-  const primaryModel = "gemini-3-flash-preview";
+  const primaryModel = "gemini-3.1-flash-lite-preview";
   const fallbackModel = "gemini-flash-latest";
   
   const modeInstructions: Record<string, string> = {
@@ -191,9 +195,10 @@ export async function analyzeIngredientsFromText(
 
   const maxRetries = 5;
   let retryCount = 0;
+  let useFallback = false;
 
   while (retryCount <= maxRetries) {
-    const model = retryCount >= 3 ? fallbackModel : primaryModel;
+    const model = (retryCount >= 3 || useFallback) ? fallbackModel : primaryModel;
     try {
       const response = await ai.models.generateContent({
         model,
@@ -201,7 +206,7 @@ export async function analyzeIngredientsFromText(
         config: {
           responseMimeType: "application/json",
           responseSchema: SCAN_RESULT_SCHEMA,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
         }
       });
 
@@ -212,12 +217,15 @@ export async function analyzeIngredientsFromText(
       return JSON.parse(response.text) as ScanResult;
     } catch (error: any) {
       const errorMsg = error?.message || String(error);
-      const isRetryable = errorMsg.includes("503") || errorMsg.includes("429") || errorMsg.includes("high demand") || error?.status === 503 || error?.code === 503;
+      const isQuotaExceeded = errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED");
+      const isRetryable = isQuotaExceeded || errorMsg.includes("503") || errorMsg.includes("429") || errorMsg.includes("high demand") || error?.status === 503 || error?.code === 503;
       
       if (isRetryable && retryCount < maxRetries) {
         retryCount++;
-        const delay = Math.pow(2, retryCount) * 1000;
-        console.warn(`Gemini analysis retry ${retryCount}/${maxRetries} using ${retryCount >= 3 ? fallbackModel : primaryModel} after ${delay}ms...`);
+        if (isQuotaExceeded) useFallback = true;
+
+        const delay = isQuotaExceeded ? 1000 : Math.pow(2, retryCount) * 1000;
+        console.warn(`Gemini analysis retry ${retryCount}/${maxRetries} using ${useFallback ? fallbackModel : primaryModel} after ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
@@ -228,7 +236,7 @@ export async function analyzeIngredientsFromText(
 }
 
 export async function analyzeIngredientLabel(base64Image: string, mimeType: string, mode: AnalysisMode = "General"): Promise<ScanResult> {
-  const primaryModel = "gemini-3-flash-preview";
+  const primaryModel = "gemini-3.1-flash-lite-preview";
   const fallbackModel = "gemini-flash-latest";
   
   const modeInstructions: Record<string, string> = {
@@ -271,9 +279,10 @@ export async function analyzeIngredientLabel(base64Image: string, mimeType: stri
 
   const maxRetries = 5;
   let retryCount = 0;
+  let useFallback = false;
 
   while (retryCount <= maxRetries) {
-    const model = retryCount >= 3 ? fallbackModel : primaryModel;
+    const model = (retryCount >= 3 || useFallback) ? fallbackModel : primaryModel;
     try {
       const response = await ai.models.generateContent({
         model,
@@ -288,7 +297,7 @@ export async function analyzeIngredientLabel(base64Image: string, mimeType: stri
         config: {
           responseMimeType: "application/json",
           responseSchema: SCAN_RESULT_SCHEMA,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
         }
       });
 
@@ -299,12 +308,15 @@ export async function analyzeIngredientLabel(base64Image: string, mimeType: stri
       return JSON.parse(response.text) as ScanResult;
     } catch (error: any) {
       const errorMsg = error?.message || String(error);
-      const isRetryable = errorMsg.includes("503") || errorMsg.includes("429") || errorMsg.includes("high demand") || error?.status === 503 || error?.code === 503;
+      const isQuotaExceeded = errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED");
+      const isRetryable = isQuotaExceeded || errorMsg.includes("503") || errorMsg.includes("429") || errorMsg.includes("high demand") || error?.status === 503 || error?.code === 503;
       
       if (isRetryable && retryCount < maxRetries) {
         retryCount++;
-        const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff: 2s, 4s, 8s
-        console.warn(`Gemini analysis retry ${retryCount}/${maxRetries} using ${retryCount >= 3 ? fallbackModel : primaryModel} after ${delay}ms...`);
+        if (isQuotaExceeded) useFallback = true;
+
+        const delay = isQuotaExceeded ? 1000 : Math.pow(2, retryCount) * 1000; // Exponential backoff: 2s, 4s, 8s
+        console.warn(`Gemini analysis retry ${retryCount}/${maxRetries} using ${useFallback ? fallbackModel : primaryModel} after ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }

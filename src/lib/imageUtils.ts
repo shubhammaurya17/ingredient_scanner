@@ -12,17 +12,23 @@ export async function resizeImage(file: File | string, maxWidth = 800, maxHeight
   }
 
   // Handle HEIC/HEIF (common on iPhones)
-  if (blob.type === 'image/heic' || blob.type === 'image/heif' || (file instanceof File && file.name.toLowerCase().endsWith('.heic'))) {
-    try {
-      const converted = await heic2any({
-        blob,
-        toType: 'image/jpeg',
-        quality: quality
-      });
-      blob = Array.isArray(converted) ? converted[0] : converted;
-    } catch (err) {
-      console.error('HEIC conversion failed:', err);
-      // Fallback to original blob, maybe the browser can handle it
+  const isHeic = blob.type === 'image/heic' || blob.type === 'image/heif' || (file instanceof File && file.name.toLowerCase().endsWith('.heic'));
+  
+  if (isHeic) {
+    // Check if browser might support HEIC natively (Safari/iOS)
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    
+    if (!isSafari) {
+      try {
+        const converted = await heic2any({
+          blob,
+          toType: 'image/jpeg',
+          quality: quality
+        });
+        blob = Array.isArray(converted) ? converted[0] : converted;
+      } catch (err) {
+        console.error('HEIC conversion failed:', err);
+      }
     }
   }
 

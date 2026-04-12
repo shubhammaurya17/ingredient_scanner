@@ -1851,15 +1851,21 @@ export default function App() {
     
     try {
       setProcessingStep('Optimizing image...');
+      
+      // Adaptive optimization based on device and connection
+      const isMobile = window.innerWidth < 768;
+      const isSlowConn = (navigator as any).connection?.effectiveType?.includes('2g') || (navigator as any).connection?.saveData;
+      
+      const targetSize = isSlowConn ? 500 : (isMobile ? 600 : 800);
+      const targetQuality = isSlowConn ? 0.25 : 0.35;
+
       // 1. Generate placeholder and analysis image concurrently for speed
-      // Reduced size to 800 for faster upload while maintaining enough OCR accuracy
       const [base64, placeholder] = await Promise.all([
-        resizeImage(file, 800, 800, 0.4),
+        resizeImage(file, targetSize, targetSize, targetQuality),
         generatePlaceholder(file)
       ]);
       
       setProcessingStep('Extracting ingredients...');
-      const thumbnailPromise = resizeImage(base64, 300, 300, 0.4);
 
       // 2. Step 1: Extract text first
       const extraction = await extractIngredientsText(base64, 'image/jpeg');
@@ -1948,12 +1954,11 @@ export default function App() {
       // 5. Background: Save to Firestore without blocking the UI
       (async () => {
         try {
-          const thumbnail = await thumbnailPromise;
           const { imageUrl, ...analysisWithoutImage } = analysis;
           const scanDoc = {
             ...analysisWithoutImage,
             userId: user.uid,
-            imageUrl: thumbnail, // Store resized thumbnail
+            imageUrl: base64, // Store optimized image
             placeholderUrl: placeholder,
             createdAt: serverTimestamp()
           };
@@ -2073,6 +2078,13 @@ export default function App() {
             <p className="text-gray-400 text-xs mt-8 max-w-[200px]">
               Our AI is decoding the label and calculating health scores.
             </p>
+
+            <div className="mt-6 p-4 bg-brand-50/50 rounded-2xl border border-brand-100/50 max-w-[280px]">
+              <p className="text-[10px] text-brand-700 font-medium leading-relaxed">
+                <span className="font-bold uppercase mr-1">Pro Tip:</span> 
+                For faster results, ensure the label is flat and well-lit. Avoid blurry photos!
+              </p>
+            </div>
           </motion.div>
         )}
 
