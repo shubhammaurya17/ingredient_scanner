@@ -397,7 +397,7 @@ const HomeScreen = ({
   ];
 
   return (
-    <div className="p-6 space-y-8 pb-24 safe-area-bottom">
+    <div className="p-6 space-y-8 pb-32 safe-area-bottom">
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-display font-bold text-gray-900">
@@ -624,7 +624,7 @@ const CompareScreen = ({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24 safe-area-bottom">
+    <div className="min-h-screen bg-gray-50 pb-32 safe-area-bottom">
       <div className="p-6 space-y-8">
         <div>
           <h1 className="text-2xl font-display font-bold text-gray-900">Compare</h1>
@@ -751,7 +751,7 @@ const CompareScreen = ({
         <Button 
           variant="primary" 
           size="lg" 
-          className="w-full shadow-xl shadow-brand-100"
+          className="w-full shadow-xl shadow-brand-100 mb-8"
           disabled={!isReady}
           onClick={() => p1 && p2 && onCompare(p1, p2)}
         >
@@ -956,7 +956,7 @@ const ComparisonResultScreen = ({ products, onBack }: { products: ScanResult[], 
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24 safe-area-bottom">
+    <div className="min-h-screen bg-gray-50 pb-32 safe-area-bottom">
       <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex items-center">
         <Button variant="ghost" size="icon" onClick={onBack} className="mr-2">
           <ArrowLeft className="w-6 h-6" />
@@ -1397,7 +1397,7 @@ const ResultScreen = ({
   const isAnalyzing = result.health_score === 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24 safe-area-bottom">
+    <div className="min-h-screen bg-gray-50 pb-32 safe-area-bottom">
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex items-center">
         <Button variant="ghost" size="icon" onClick={onBack} className="mr-2">
           <ArrowLeft className="w-6 h-6" />
@@ -2230,7 +2230,7 @@ export default function App() {
             )}
             
             {activeTab === 'history' && (
-              <div className="p-6 space-y-6 pb-24 safe-area-bottom">
+              <div className="p-6 space-y-6 pb-32 safe-area-bottom">
                 <div className="flex items-center justify-between">
                   <h1 className="text-2xl font-display font-bold">Scan History</h1>
                   <div className="flex items-center space-x-2">
@@ -2290,7 +2290,7 @@ export default function App() {
             )}
 
             {activeTab === 'profile' && (
-              <div className="p-6 space-y-8 pb-24 safe-area-bottom">
+              <div className="p-6 space-y-8 pb-32 safe-area-bottom">
                 <h1 className="text-2xl font-display font-bold">Profile</h1>
                 <div className="flex flex-col items-center space-y-4">
                   <div className="w-24 h-24 rounded-full bg-brand-50 flex items-center justify-center border-4 border-white shadow-lg overflow-hidden">
