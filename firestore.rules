@@ -55,6 +55,11 @@ service cloud.firestore {
              data.imageUrl is string;
     }
 
+    function isValidScanUpdate(data) {
+      return data.userId == resource.data.userId &&
+             (!('recommended_products' in data) || data.recommended_products is list);
+    }
+
     function isValidFeedback(data) {
       return data.keys().hasAll(['userId', 'feedbackType', 'createdAt']) &&
              data.userId == request.auth.uid &&
@@ -70,6 +75,7 @@ service cloud.firestore {
     match /scans/{scanId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid);
       allow create: if isAuthenticated() && isValidScan(request.resource.data);
+      allow update: if isDocOwner() && isValidScanUpdate(request.resource.data);
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid);
     }
 

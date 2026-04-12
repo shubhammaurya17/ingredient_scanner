@@ -346,16 +346,25 @@ export async function analyzeIngredientLabel(base64Image: string, mimeType: stri
 export async function getProductRecommendations(
   productName: string,
   ingredients: string,
-  mode: AnalysisMode = "General"
+  mode: AnalysisMode = "General",
+  isGoodProduct: boolean = false
 ): Promise<ProductRecommendation[]> {
   const primaryModel = "gemini-3.1-flash-lite-preview";
   const fallbackModel = "gemini-flash-latest";
 
+  const contextRule = isGoodProduct 
+    ? `The current product is already a GOOD CHOICE. Suggest 2-3 premium, cleaner, or higher-quality alternatives (e.g., fewer ingredients, organic, more natural processing). ONLY suggest if they are CLEARLY better than the current product.`
+    : `The current product is NOT GOOD (low score or health risks). Suggest 2-5 SAFER and healthier alternatives in the same category.`;
+
   const primaryPrompt = `
-    Based on the following food product, suggest 2-5 safer and healthier product alternatives available in India.
+    Based on the following food product, suggest healthier product alternatives available in India.
     Product Name: ${productName}
     Ingredients: ${ingredients}
     Mode: ${mode}
+    
+    ${contextRule}
+    
+    CRITICAL RULE: Do not recommend alternatives unless they provide clear additional value to the user. If no significantly better options exist, return an empty array.
     
     Structure your response as a JSON array of objects:
     [
@@ -374,9 +383,12 @@ export async function getProductRecommendations(
   `;
 
   const fallbackPrompt = `
-    The previous attempt to find healthy alternatives for "${productName}" was too generic or empty.
-    Suggest 3-5 REAL packaged food products available in India that are healthier alternatives to "${productName}".
+    Suggest REAL packaged food products available in India that are healthier alternatives to "${productName}".
     Ingredients of original: ${ingredients}
+    
+    ${contextRule}
+    
+    CRITICAL RULE: Do not recommend alternatives unless they provide clear additional value to the user.
     
     STRICT CONSTRAINTS:
     - Suggest REAL brands and product names (e.g., 'Kikkoman Less Sodium Soy Sauce' instead of 'Organic Soy Sauce').

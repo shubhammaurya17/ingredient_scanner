@@ -75,6 +75,18 @@
         "allergenFlags": { "type": "array", "items": { "type": "string" } },
         "warnings": { "type": "array", "items": { "type": "string" } },
         "rawOcrText": { "type": "string" },
+        "recommended_products": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "product_name": { "type": "string" },
+              "brand": { "type": "string" },
+              "reason": { "type": "string" }
+            },
+            "required": ["product_name", "brand", "reason"]
+          }
+        },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "imageUrl", "createdAt"]

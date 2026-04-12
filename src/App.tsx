@@ -58,6 +58,7 @@ import {
   setDoc,
   getDoc,
   getDocFromServer,
+  updateDoc,
   limit
 } from 'firebase/firestore';
 import { cn } from './lib/utils';
@@ -1915,29 +1916,43 @@ const ResultScreen = ({
           </Card>
         </div>
 
-        {/* 6. Better Alternatives Guidance */}
-        {result.better_alternatives_guidance && (
+        {/* 6. Better Alternatives / Safer Alternatives Guidance */}
+        {((result.better_alternatives_guidance && result.overall_verdict !== 'Good') || (result.recommended_products && result.recommended_products.length > 0)) && (
           <div className="space-y-3">
-            <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest px-1">Safer Alternatives</h2>
-            <Card className="p-4 bg-brand-50 border-brand-100">
-              <div className="flex items-start space-x-3">
-                <div className="p-2 bg-brand-100 rounded-lg">
-                  <CheckCircle2 className="w-5 h-5 text-brand-600" />
+            <div className="px-1">
+              <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest">
+                {result.overall_verdict === 'Good' ? 'Better Options (Optional)' : 'Safer Alternatives'}
+              </h2>
+              {result.overall_verdict === 'Good' && (
+                <p className="text-[10px] text-gray-500 font-medium mt-1">
+                  This is already a good choice. If you want even better options, consider these:
+                </p>
+              )}
+            </div>
+
+            {result.overall_verdict !== 'Good' && result.better_alternatives_guidance && (
+              <Card className="p-4 bg-brand-50 border-brand-100">
+                <div className="flex items-start space-x-3">
+                  <div className="p-2 bg-brand-100 rounded-lg">
+                    <CheckCircle2 className="w-5 h-5 text-brand-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-brand-900 font-bold mb-1">What to look for instead:</p>
+                    <p className="text-xs text-brand-700 leading-relaxed">{result.better_alternatives_guidance}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-brand-900 font-bold mb-1">What to look for instead:</p>
-                  <p className="text-xs text-brand-700 leading-relaxed">{result.better_alternatives_guidance}</p>
-                </div>
-              </div>
-            </Card>
+              </Card>
+            )}
 
             {/* Recommended Products Block */}
-            <div className="space-y-2 mt-4">
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Recommended Products</p>
+            <div className="space-y-2 mt-2">
+              {result.overall_verdict !== 'Good' && (
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Recommended Products</p>
+              )}
               {isAnalyzing ? (
                 <div className="flex items-center space-x-3 p-4 bg-white rounded-2xl border border-gray-100 animate-pulse">
                   <div className="w-5 h-5 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-xs text-gray-500 font-medium">Finding better alternatives...</span>
+                  <span className="text-xs text-gray-500 font-medium">Finding {result.overall_verdict === 'Good' ? 'premium' : 'better'} alternatives...</span>
                 </div>
               ) : result.recommended_products && result.recommended_products.length > 0 ? (
                 <div className="space-y-2">
@@ -1950,7 +1965,9 @@ const ResultScreen = ({
                           </h3>
                           <div className="flex items-center mt-1 text-brand-600">
                             <ArrowRight className="w-3 h-3 mr-1" />
-                            <p className="text-[11px] font-medium leading-tight">{product.reason}</p>
+                            <p className="text-[11px] font-medium leading-tight">
+                              {result.overall_verdict === 'Good' ? '→ ' : ''}{product.reason}
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -1960,14 +1977,14 @@ const ResultScreen = ({
               ) : !result.recommended_products && !isAnalyzing ? (
                 <div className="flex items-center space-x-3 p-4 bg-white rounded-2xl border border-gray-100 animate-pulse">
                   <div className="w-5 h-5 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-xs text-gray-500 font-medium">Finding better alternatives...</span>
+                  <span className="text-xs text-gray-500 font-medium">Finding {result.overall_verdict === 'Good' ? 'premium' : 'better'} alternatives...</span>
                 </div>
-              ) : (
-                <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-                  <p className="text-[10px] text-gray-500 font-medium italic">Product recommendations coming soon</p>
-                </div>
-              )}
+              ) : null}
             </div>
+            
+            <p className="text-[9px] text-gray-400 italic px-1 pt-1">
+              Do not recommend alternatives unless they provide clear additional value to the user.
+            </p>
           </div>
         )}
 
@@ -2231,6 +2248,35 @@ export default function App() {
     }
   }, [user]);
 
+  // Fetch missing recommendations for history items
+  useEffect(() => {
+    if (currentResult && currentResult.id && !currentResult.recommended_products && !isProcessing && !currentResult.id.startsWith('temp-')) {
+      const fetchMissingRecs = async () => {
+        try {
+          const recommendations = await getProductRecommendations(
+            currentResult.product_name,
+            currentResult.ingredients_text || '',
+            analysisMode,
+            currentResult.overall_verdict === 'Good'
+          );
+          
+          if (recommendations && recommendations.length > 0) {
+            // Update local state
+            setCurrentResult(prev => prev?.id === currentResult.id ? { ...prev, recommended_products: recommendations } : prev);
+            
+            // Persist to Firestore
+            await updateDoc(doc(db, 'scans', currentResult.id), {
+              recommended_products: recommendations
+            });
+          }
+        } catch (err) {
+          console.error("Failed to fetch missing recommendations:", err);
+        }
+      };
+      fetchMissingRecs();
+    }
+  }, [currentResult?.id]);
+
   const [lastFile, setLastFile] = useState<File | null>(null);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement> | File) => {
@@ -2351,50 +2397,59 @@ export default function App() {
       setIsProcessing(false);
       setPartialResult(null);
 
-      // 5. Background: Fetch recommendations asynchronously
+      // 5. Background: Save to Firestore and Fetch Recommendations
       (async () => {
+        const slot = scanningForSlot; // Capture current slot
+        let savedDocId: string | null = null;
+        
         try {
-          const recommendations = await getProductRecommendations(
-            extraction.product_name,
-            extraction.ingredients_text,
-            analysisMode
-          );
-          
-          // Update the current result with recommendations
-          if (scanningForSlot === null) {
-            setCurrentResult(prev => prev ? { ...prev, recommended_products: recommendations } : null);
-          } else if (scanningForSlot === 1) {
-            setCompareP1(prev => prev ? { ...prev, recommended_products: recommendations } : null);
-          } else if (scanningForSlot === 2) {
-            setCompareP2(prev => prev ? { ...prev, recommended_products: recommendations } : null);
-          }
-        } catch (err) {
-          console.error("Failed to fetch recommendations:", err);
-        }
-      })();
-
-      // 6. Background: Save to Firestore without blocking the UI
-      (async () => {
-        try {
+          // A. Save initial analysis to Firestore
           const { imageUrl, ...analysisWithoutImage } = analysis;
           const scanDoc = {
             ...analysisWithoutImage,
             userId: user.uid,
-            imageUrl: base64, // Store optimized image
+            imageUrl: base64,
             placeholderUrl: placeholder,
-            createdAt: serverTimestamp()
+            createdAt: serverTimestamp(),
+            ingredients_text: extraction.ingredients_text,
+            nutrition_text: extraction.nutrition_text,
           };
           
           const docRef = await addDoc(collection(db, 'scans'), scanDoc);
+          savedDocId = docRef.id;
           const finalResult = { ...scanDoc, imageUrl: base64, placeholderUrl: placeholder, id: docRef.id, createdAt: { seconds: Date.now() / 1000 } } as ScanResult;
 
           // Silently update the state with the real Firestore ID
-          if (scanningForSlot === 1) setCompareP1(finalResult);
-          else if (scanningForSlot === 2) setCompareP2(finalResult);
+          if (slot === 1) setCompareP1(finalResult);
+          else if (slot === 2) setCompareP2(finalResult);
           else setCurrentResult(prev => prev?.id === tempId ? finalResult : prev);
-          
-        } catch (fsErr) {
-          console.error("Background Firestore save failed:", fsErr);
+
+          // B. Fetch Recommendations
+          const recommendations = await getProductRecommendations(
+            extraction.product_name,
+            extraction.ingredients_text,
+            analysisMode,
+            analysis.overall_verdict === 'Good'
+          );
+
+          if (recommendations && recommendations.length > 0) {
+            // Update state with recommendations
+            const updateWithRecs = (prev: ScanResult | null) => 
+              prev && (prev.id === savedDocId || prev.id === tempId) 
+                ? { ...prev, recommended_products: recommendations } 
+                : prev;
+
+            if (slot === 1) setCompareP1(updateWithRecs);
+            else if (slot === 2) setCompareP2(updateWithRecs);
+            else setCurrentResult(updateWithRecs);
+
+            // Persist recommendations to Firestore
+            await updateDoc(doc(db, 'scans', savedDocId), {
+              recommended_products: recommendations
+            });
+          }
+        } catch (err) {
+          console.error("Background processing failed:", err);
         }
       })();
 
