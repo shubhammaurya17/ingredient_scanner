@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Camera, 
   Upload, 
@@ -1024,11 +1024,22 @@ const formatValue = (v: string | number | undefined | null, defaultUnit: string)
   return `${numPart} ${unitPart}`;
 };
 
-const ComparisonResultScreen = ({ products, onBack }: { products: ScanResult[], onBack: () => void }) => {
+const ComparisonResultScreen = ({ products, onBack, isAnalyzing }: { products: ScanResult[], onBack: () => void, isAnalyzing?: boolean }) => {
   if (products.length < 2) return null;
   const [p1, p2] = products;
 
   const calculateComparison = (prod1: ScanResult, prod2: ScanResult) => {
+    // If either is still analyzing (health_score 0), return a loading state
+    if (prod1.health_score === 0 || prod2.health_score === 0) {
+      return { 
+        winner: prod1, 
+        loser: prod2, 
+        status: 'close' as const, 
+        outcomeType: 'mixed' as const, 
+        reason: "Analyzing both products to determine the winner...", 
+        diff: 0 
+      };
+    }
     const getPoints = (p: ScanResult) => {
       let points = (p.health_score / 100) * 20; // 20% weight for base score
 
@@ -1106,7 +1117,7 @@ const ComparisonResultScreen = ({ products, onBack }: { products: ScanResult[], 
     return { winner, loser, status, outcomeType, reason, diff };
   };
 
-  const comparison = calculateComparison(p1, p2);
+  const comparison = useMemo(() => calculateComparison(p1, p2), [p1, p2]);
   const betterProduct = comparison.winner;
   const otherProduct = comparison.loser;
   const [showFeedback, setShowFeedback] = useState(false);
@@ -1219,6 +1230,7 @@ const ComparisonResultScreen = ({ products, onBack }: { products: ScanResult[], 
           animate={{ opacity: 1, y: 0 }}
           className={cn(
             "p-6 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden",
+            isAnalyzing ? "bg-gray-400 shadow-gray-100" :
             comparison.outcomeType === 'both_bad' ? "bg-red-600 shadow-red-200" :
             comparison.outcomeType === 'both_good' ? "bg-green-600 shadow-green-200" :
             comparison.status === 'clear' ? "bg-brand-600 shadow-brand-200" : 
@@ -1227,16 +1239,19 @@ const ComparisonResultScreen = ({ products, onBack }: { products: ScanResult[], 
           )}
         >
           <div className="absolute -top-6 -right-6 opacity-10 rotate-12">
-            {comparison.outcomeType === 'both_bad' ? <AlertTriangle className="w-40 h-40" /> : <Trophy className="w-40 h-40" />}
+            {isAnalyzing ? <RefreshCw className="w-40 h-40 animate-spin-slow" /> :
+             comparison.outcomeType === 'both_bad' ? <AlertTriangle className="w-40 h-40" /> : <Trophy className="w-40 h-40" />}
           </div>
           <div className="relative z-10">
             <div className="flex items-center space-x-2 mb-4">
               <div className="p-1.5 bg-white/20 rounded-lg">
-                {comparison.outcomeType === 'both_bad' ? <AlertTriangle className="w-4 h-4 text-white" /> :
+                {isAnalyzing ? <Loader2 className="w-4 h-4 text-white animate-spin" /> :
+                 comparison.outcomeType === 'both_bad' ? <AlertTriangle className="w-4 h-4 text-white" /> :
                  comparison.status === 'close' ? <Scale className="w-4 h-4 text-white" /> : <Trophy className="w-4 h-4 text-white" />}
               </div>
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/90">
-                {comparison.outcomeType === 'both_bad' ? 'Neither Recommended' :
+                {isAnalyzing ? 'Analyzing Comparison...' :
+                 comparison.outcomeType === 'both_bad' ? 'Neither Recommended' :
                  comparison.outcomeType === 'both_good' ? 'Both are Good Choices' :
                  comparison.status === 'clear' ? 'Clear Better Pick' : 
                  comparison.status === 'slight' ? 'Slightly Better Pick' : 
@@ -1244,13 +1259,14 @@ const ComparisonResultScreen = ({ products, onBack }: { products: ScanResult[], 
               </span>
             </div>
             <h3 className="text-3xl font-display font-black mb-3 leading-tight">
-              {comparison.outcomeType === 'both_bad' ? 'Both Have Significant Concerns' :
+              {isAnalyzing ? 'Calculating Winner...' :
+               comparison.outcomeType === 'both_bad' ? 'Both Have Significant Concerns' :
                comparison.status === 'close' ? 'Both are similar' : betterProduct.product_name}
             </h3>
             <div className="flex items-center space-x-3 p-3 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/10">
-              <Zap className="w-5 h-5 text-yellow-300 fill-yellow-300" />
+              {isAnalyzing ? <Activity className="w-5 h-5 text-white animate-pulse" /> : <Zap className="w-5 h-5 text-yellow-300 fill-yellow-300" />}
               <p className="text-sm font-medium text-white/90">
-                {comparison.reason}
+                {isAnalyzing ? 'Our AI is comparing ingredients and nutrition data...' : comparison.reason}
               </p>
             </div>
           </div>
@@ -1283,11 +1299,13 @@ const ComparisonResultScreen = ({ products, onBack }: { products: ScanResult[], 
               <div className="text-center space-y-1">
                 <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-wider truncate w-32">{p.product_name}</h3>
                 <div className="flex items-center justify-center space-x-1">
-                  <span className="text-2xl font-display font-black text-gray-900">{p.health_score}</span>
-                  <span className="text-[10px] font-bold text-gray-400">/100</span>
+                  <span className="text-2xl font-display font-black text-gray-900">
+                    {p.health_score === 0 ? <Loader2 className="w-5 h-5 animate-spin text-brand-600" /> : p.health_score}
+                  </span>
+                  {p.health_score !== 0 && <span className="text-[10px] font-bold text-gray-400">/100</span>}
                 </div>
                 <Badge variant={p.overall_verdict === 'Good' ? 'green' : p.overall_verdict === 'Moderate' ? 'yellow' : 'red'} className="text-[8px] px-1.5 py-0">
-                  {p.overall_verdict}
+                  {p.health_score === 0 ? 'Analyzing...' : p.overall_verdict}
                 </Badge>
               </div>
             </Card>
@@ -1303,66 +1321,79 @@ const ComparisonResultScreen = ({ products, onBack }: { products: ScanResult[], 
             </h2>
           </div>
           <Card className="p-5 space-y-4">
-            <div className="grid grid-cols-2 gap-4 pb-4 border-b border-gray-50">
-              <div className="space-y-2">
-                <span className={cn(
-                  "text-[10px] font-bold uppercase tracking-wider flex items-center",
-                  comparison.outcomeType === 'both_bad' ? "text-red-600" : "text-green-600"
-                )}>
-                  {comparison.outcomeType === 'both_bad' ? <AlertCircle className="w-3 h-3 mr-1" /> : <ThumbsUp className="w-3 h-3 mr-1" />}
-                  {comparison.outcomeType === 'both_bad' ? `Risks (${p1.product_name})` : 'Pros'}
-                </span>
-                <ul className="space-y-1.5">
-                  {comparison.outcomeType === 'both_bad' ? (
-                    (p1.warnings || []).slice(0, 3).map((r, i) => (
-                      <li key={i} className="text-[11px] font-medium text-gray-600 leading-tight">• {r}</li>
-                    ))
-                  ) : (
-                    (betterProduct.confirmed_facts || [])
-                      .filter(f => {
-                        const low = f.toLowerCase();
-                        return !low.includes('sugar') && 
-                               !low.includes('additive') && 
-                               !low.includes('ins') && 
-                               !low.includes('preservative') &&
-                               !low.includes('artificial') &&
-                               !low.includes('syrup') &&
-                               !low.includes('carbonated');
-                      })
-                      .concat((betterProduct.top_reasons || []).filter(r => {
-                        const low = r.toLowerCase();
-                        return !low.includes('high') && !low.includes('bad') && !low.includes('avoid');
-                      }))
-                      .slice(0, 3).map((r, i) => (
+            {isAnalyzing ? (
+              <div className="space-y-4 py-4">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="flex items-center justify-between animate-pulse">
+                    <div className="h-3 bg-gray-100 rounded w-1/4" />
+                    <div className="h-8 bg-gray-50 rounded w-1/2" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-4 pb-4 border-b border-gray-50">
+                  <div className="space-y-2">
+                    <span className={cn(
+                      "text-[10px] font-bold uppercase tracking-wider flex items-center",
+                      comparison.outcomeType === 'both_bad' ? "text-red-600" : "text-green-600"
+                    )}>
+                      {comparison.outcomeType === 'both_bad' ? <AlertCircle className="w-3 h-3 mr-1" /> : <ThumbsUp className="w-3 h-3 mr-1" />}
+                      {comparison.outcomeType === 'both_bad' ? `Risks (${p1.product_name})` : 'Pros'}
+                    </span>
+                    <ul className="space-y-1.5">
+                      {comparison.outcomeType === 'both_bad' ? (
+                        (p1.warnings || []).slice(0, 3).map((r, i) => (
+                          <li key={i} className="text-[11px] font-medium text-gray-600 leading-tight">• {r}</li>
+                        ))
+                      ) : (
+                        (betterProduct.confirmed_facts || [])
+                          .filter(f => {
+                            const low = f.toLowerCase();
+                            return !low.includes('sugar') && 
+                                   !low.includes('additive') && 
+                                   !low.includes('ins') && 
+                                   !low.includes('preservative') &&
+                                   !low.includes('artificial') &&
+                                   !low.includes('syrup') &&
+                                   !low.includes('carbonated');
+                          })
+                          .concat((betterProduct.top_reasons || []).filter(r => {
+                            const low = r.toLowerCase();
+                            return !low.includes('high') && !low.includes('bad') && !low.includes('avoid');
+                          }))
+                          .slice(0, 3).map((r, i) => (
+                            <li key={i} className="text-[11px] font-medium text-gray-600 leading-tight">• {r}</li>
+                          ))
+                      )}
+                      {comparison.outcomeType !== 'both_bad' && betterProduct.health_score > 70 && (betterProduct.confirmed_facts || []).length === 0 && (
+                        <li className="text-[11px] font-medium text-green-600 leading-tight">• High quality ingredients</li>
+                      )}
+                      {comparison.outcomeType !== 'both_bad' && betterProduct.health_score <= 70 && (betterProduct.confirmed_facts || []).length === 0 && (
+                        <li className="text-[11px] font-medium text-gray-400 italic leading-tight">• No specific pros identified</li>
+                      )}
+                    </ul>
+                  </div>
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold text-red-600 uppercase tracking-wider flex items-center">
+                      <ThumbsDown className="w-3 h-3 mr-1" /> {comparison.outcomeType === 'both_bad' ? `Risks (${p2.product_name})` : 'Cons'}
+                    </span>
+                    <ul className="space-y-1.5">
+                      {(comparison.outcomeType === 'both_bad' ? (p2.warnings || []) : (otherProduct.warnings || [])).slice(0, 3).map((r, i) => (
                         <li key={i} className="text-[11px] font-medium text-gray-600 leading-tight">• {r}</li>
-                      ))
-                  )}
-                  {comparison.outcomeType !== 'both_bad' && betterProduct.health_score > 70 && (betterProduct.confirmed_facts || []).length === 0 && (
-                    <li className="text-[11px] font-medium text-green-600 leading-tight">• High quality ingredients</li>
-                  )}
-                  {comparison.outcomeType !== 'both_bad' && betterProduct.health_score <= 70 && (betterProduct.confirmed_facts || []).length === 0 && (
-                    <li className="text-[11px] font-medium text-gray-400 italic leading-tight">• No specific pros identified</li>
-                  )}
-                </ul>
-              </div>
-              <div className="space-y-2">
-                <span className="text-[10px] font-bold text-red-600 uppercase tracking-wider flex items-center">
-                  <ThumbsDown className="w-3 h-3 mr-1" /> {comparison.outcomeType === 'both_bad' ? `Risks (${p2.product_name})` : 'Cons'}
-                </span>
-                <ul className="space-y-1.5">
-                  {(comparison.outcomeType === 'both_bad' ? (p2.warnings || []) : (otherProduct.warnings || [])).slice(0, 3).map((r, i) => (
-                    <li key={i} className="text-[11px] font-medium text-gray-600 leading-tight">• {r}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-            
-            <div className="space-y-1">
-              <MetricRow label="Sugar" v1={p1.nutrition_summary?.sugar?.value || 0} v2={p2.nutrition_summary?.sugar?.value || 0} unit="g" better="lower" />
-              <MetricRow label="Sodium" v1={p1.nutrition_summary?.sodium?.value || 0} v2={p2.nutrition_summary?.sodium?.value || 0} unit="mg" better="lower" />
-              <MetricRow label="Protein" v1={p1.nutrition_summary?.protein?.value || 0} v2={p2.nutrition_summary?.protein?.value || 0} unit="g" better="higher" />
-              <MetricRow label="Fiber" v1={p1.nutrition_summary?.fiber?.value || 0} v2={p2.nutrition_summary?.fiber?.value || 0} unit="g" better="higher" />
-            </div>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                
+                <div className="space-y-1">
+                  <MetricRow label="Sugar" v1={p1.nutrition_summary?.sugar?.value || 0} v2={p2.nutrition_summary?.sugar?.value || 0} unit="g" better="lower" />
+                  <MetricRow label="Sodium" v1={p1.nutrition_summary?.sodium?.value || 0} v2={p2.nutrition_summary?.sodium?.value || 0} unit="mg" better="lower" />
+                  <MetricRow label="Protein" v1={p1.nutrition_summary?.protein?.value || 0} v2={p2.nutrition_summary?.protein?.value || 0} unit="g" better="higher" />
+                  <MetricRow label="Fiber" v1={p1.nutrition_summary?.fiber?.value || 0} v2={p2.nutrition_summary?.fiber?.value || 0} unit="g" better="higher" />
+                </div>
+              </>
+            )}
           </Card>
         </div>
 
@@ -2147,6 +2178,12 @@ export default function App() {
   const [compareP1, setCompareP1] = useState<ScanResult | null>(null);
   const [compareP2, setCompareP2] = useState<ScanResult | null>(null);
   const [scanningForSlot, setScanningForSlot] = useState<1 | 2 | null>(null);
+  const scanningForSlotRef = useRef<1 | 2 | null>(null);
+
+  // Sync ref with state
+  useEffect(() => {
+    scanningForSlotRef.current = scanningForSlot;
+  }, [scanningForSlot]);
   const [showCollections, setShowCollections] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -2280,6 +2317,16 @@ export default function App() {
   const [lastFile, setLastFile] = useState<File | null>(null);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement> | File) => {
+    // Use ref to get the absolute latest value, avoiding closure staleness
+    let currentSlot = scanningForSlotRef.current; 
+    
+    // If we are on compare tab but no slot was selected (e.g. central scan button),
+    // try to find the first empty slot.
+    if (activeTab === 'compare' && currentSlot === null) {
+      if (!compareP1) currentSlot = 1;
+      else if (!compareP2) currentSlot = 2;
+    }
+
     let file: File | undefined;
     if (e instanceof File) {
       file = e;
@@ -2319,8 +2366,8 @@ export default function App() {
       // Show partial result immediately
       const tempPartial: ScanResult = {
         product_name: extraction.product_name,
-        ingredients_text: extraction.ingredients_text,
-        nutrition_text: extraction.nutrition_text,
+        ingredients_text: extraction.ingredients_text || '',
+        nutrition_text: extraction.nutrition_text || '',
         imageUrl: base64,
         placeholderUrl: placeholder,
         // Mock required fields for ResultScreen
@@ -2344,7 +2391,7 @@ export default function App() {
         userId: user.uid,
         createdAt: { seconds: Date.now() / 1000 },
         processing_level: 'Analyzing...',
-        raw_ocr_text: extraction.ingredients_text,
+        raw_ocr_text: extraction.ingredients_text || '',
         confidence_reasons: [],
         confirmed_facts: [],
         ai_estimates: [],
@@ -2355,11 +2402,15 @@ export default function App() {
         warnings: []
       };
       
-      if (scanningForSlot === null) {
+      if (currentSlot === 1) {
+        setCompareP1(tempPartial);
+      } else if (currentSlot === 2) {
+        setCompareP2(tempPartial);
+      } else if (currentSlot === null && activeTab !== 'compare') {
         setCurrentResult(tempPartial);
-        setIsProcessing(false);
       }
       
+      // Keep processing state true until full analysis is done
       setProcessingStep('Analyzing ingredients...');
       // 3. Step 2: Analyze from text
       const analysis = await analyzeIngredientsFromText(
@@ -2381,15 +2432,25 @@ export default function App() {
         createdAt: { seconds: Date.now() / 1000 } 
       } as ScanResult;
 
-      if (scanningForSlot === 1) {
+      if (currentSlot === 1) {
         setCompareP1(initialResult);
+        setComparisonResult(prev => {
+          if (prev && prev[0].health_score === 0) {
+            return [initialResult, prev[1]];
+          }
+          return prev;
+        });
         setScanningForSlot(null);
-        setIsProcessing(false);
-      } else if (scanningForSlot === 2) {
+      } else if (currentSlot === 2) {
         setCompareP2(initialResult);
+        setComparisonResult(prev => {
+          if (prev && prev[1].health_score === 0) {
+            return [prev[0], initialResult];
+          }
+          return prev;
+        });
         setScanningForSlot(null);
-        setIsProcessing(false);
-      } else {
+      } else if (activeTab !== 'compare') {
         setCurrentResult(initialResult);
       }
       
@@ -2399,7 +2460,7 @@ export default function App() {
 
       // 5. Background: Save to Firestore and Fetch Recommendations
       (async () => {
-        const slot = scanningForSlot; // Capture current slot
+        const slot = currentSlot; 
         let savedDocId: string | null = null;
         
         try {
@@ -2411,8 +2472,8 @@ export default function App() {
             imageUrl: base64,
             placeholderUrl: placeholder,
             createdAt: serverTimestamp(),
-            ingredients_text: extraction.ingredients_text,
-            nutrition_text: extraction.nutrition_text,
+            ingredients_text: extraction.ingredients_text || '',
+            nutrition_text: extraction.nutrition_text || '',
           };
           
           const docRef = await addDoc(collection(db, 'scans'), scanDoc);
@@ -2444,9 +2505,11 @@ export default function App() {
             else setCurrentResult(updateWithRecs);
 
             // Persist recommendations to Firestore
-            await updateDoc(doc(db, 'scans', savedDocId), {
-              recommended_products: recommendations
-            });
+            if (savedDocId) {
+              await updateDoc(doc(db, 'scans', savedDocId), {
+                recommended_products: recommendations
+              });
+            }
           }
         } catch (err) {
           console.error("Background processing failed:", err);
@@ -2492,6 +2555,7 @@ export default function App() {
           setCompareP1(null);
           setCompareP2(null);
         }} 
+        isAnalyzing={comparisonResult.some(p => p.health_score === 0)}
       />
     );
   }
@@ -2604,7 +2668,7 @@ export default function App() {
           </motion.div>
         )}
 
-        {currentResult ? (
+        {currentResult && activeTab !== 'compare' ? (
           <motion.div 
             key="result"
             initial={{ opacity: 0, x: 20 }}

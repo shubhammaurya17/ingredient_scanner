@@ -343,12 +343,19 @@ export async function analyzeIngredientLabel(base64Image: string, mimeType: stri
   throw new Error("Failed to analyze image after multiple retries due to high demand.");
 }
 
+let quotaExceededUntil = 0;
+
 export async function getProductRecommendations(
   productName: string,
   ingredients: string,
   mode: AnalysisMode = "General",
   isGoodProduct: boolean = false
 ): Promise<ProductRecommendation[]> {
+  if (Date.now() < quotaExceededUntil) {
+    console.warn("Skipping AI recommendations due to recent quota exhaustion.");
+    return [];
+  }
+
   const primaryModel = "gemini-3.1-flash-lite-preview";
   const fallbackModel = "gemini-flash-latest";
 
@@ -397,23 +404,54 @@ export async function getProductRecommendations(
     - JSON array only.
   `;
 
-  async function callAI(prompt: string, model: string): Promise<ProductRecommendation[]> {
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: [{ parts: [{ text: prompt }] }],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: RECOMMENDATION_SCHEMA,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+  async function callAI(prompt: string, modelName: string): Promise<ProductRecommendation[]> {
+    const maxRetries = 5;
+    let retryCount = 0;
+
+    while (retryCount <= maxRetries) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: [{ parts: [{ text: prompt }] }],
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: RECOMMENDATION_SCHEMA,
+            thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+          }
+        });
+        if (!response.text) return [];
+        return JSON.parse(response.text) as ProductRecommendation[];
+      } catch (error: any) {
+        const errorMsg = error?.message || String(error);
+        const isQuotaExceeded = errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED");
+        const isRetryable = isQuotaExceeded || errorMsg.includes("503") || errorMsg.includes("high demand") || error?.status === 503 || error?.code === 503;
+
+        if (isQuotaExceeded) {
+          // Set a 1-minute global cooldown for recommendations if we hit a hard quota
+          quotaExceededUntil = Date.now() + 60000;
         }
-      });
-      if (!response.text) return [];
-      return JSON.parse(response.text) as ProductRecommendation[];
-    } catch (error) {
-      console.error("AI Recommendation call failed:", error);
-      return [];
+
+        if (isRetryable && retryCount < maxRetries) {
+          retryCount++;
+          // More aggressive backoff for quota errors
+          const delay = isQuotaExceeded 
+            ? (5000 * retryCount) + Math.floor(Math.random() * 2000) 
+            : Math.pow(2, retryCount) * 1000;
+            
+          console.warn(`AI Recommendation retry ${retryCount}/${maxRetries} for ${modelName} after ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+        if (!isQuotaExceeded) {
+          console.error("AI Recommendation call failed:", error);
+        } else {
+          console.warn("AI Recommendation quota exceeded. Cooling down for 60s.");
+        }
+        return [];
+      }
     }
+    return [];
   }
 
   // Layer 1: Primary AI Call
