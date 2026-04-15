@@ -2349,8 +2349,8 @@ export default function App() {
       const isMobile = window.innerWidth < 768;
       const isSlowConn = (navigator as any).connection?.effectiveType?.includes('2g') || (navigator as any).connection?.saveData;
       
-      const targetSize = isSlowConn ? 500 : (isMobile ? 600 : 800);
-      const targetQuality = isSlowConn ? 0.25 : 0.35;
+      const targetSize = isSlowConn ? 400 : (isMobile ? 512 : 600);
+      const targetQuality = isSlowConn ? 0.2 : 0.3;
 
       // 1. Generate placeholder and analysis image concurrently for speed
       const [base64, placeholder] = await Promise.all([
@@ -2358,74 +2358,15 @@ export default function App() {
         generatePlaceholder(file)
       ]);
       
-      setProcessingStep('Extracting ingredients...');
+      setProcessingStep('Analyzing label...');
 
-      // 2. Step 1: Extract text first
-      const extraction = await extractIngredientsText(base64, 'image/jpeg');
+      // 2. Single-step Analysis for maximum speed
+      const analysis = await analyzeIngredientLabel(base64, 'image/jpeg', analysisMode);
       
-      // Show partial result immediately
-      const tempPartial: ScanResult = {
-        product_name: extraction.product_name,
-        ingredients_text: extraction.ingredients_text || '',
-        nutrition_text: extraction.nutrition_text || '',
-        imageUrl: base64,
-        placeholderUrl: placeholder,
-        // Mock required fields for ResultScreen
-        overall_verdict: 'Moderate',
-        verdict_action: 'Not Ideal',
-        health_score: 0, // 0 will trigger loading state in UI
-        confidence_level: 'Moderate',
-        top_reasons: ['Analyzing ingredients...'],
-        score_breakdown: [],
-        nutrition_summary: {
-          sugar: { value: '...', level: 'Moderate' },
-          sodium: { value: '...', level: 'Moderate' },
-          protein: { value: '...', level: 'Moderate' },
-          fiber: { value: '...', level: 'Moderate' },
-          saturated_fat: { value: '...', level: 'Moderate' },
-        },
-        suitability_flags: [],
-        better_alternatives_guidance: 'Analyzing...',
-        ingredient_breakdown: [],
-        why_summary: 'Extracting deep insights from ingredients...',
-        userId: user.uid,
-        createdAt: { seconds: Date.now() / 1000 },
-        processing_level: 'Analyzing...',
-        raw_ocr_text: extraction.ingredients_text || '',
-        confidence_reasons: [],
-        confirmed_facts: [],
-        ai_estimates: [],
-        ingredient_risk_score: 0,
-        ocr_confidence: 0,
-        analysis_confidence: 0,
-        allergen_flags: [],
-        warnings: []
-      };
-      
-      if (currentSlot === 1) {
-        setCompareP1(tempPartial);
-      } else if (currentSlot === 2) {
-        setCompareP2(tempPartial);
-      } else if (currentSlot === null && activeTab !== 'compare') {
-        setCurrentResult(tempPartial);
-      }
-      
-      // Keep processing state true until full analysis is done
-      setProcessingStep('Analyzing ingredients...');
-      // 3. Step 2: Analyze from text
-      const analysis = await analyzeIngredientsFromText(
-        extraction.product_name,
-        extraction.ingredients_text,
-        extraction.nutrition_text,
-        analysisMode
-      );
-      
-      // 4. Show results IMMEDIATELY to user with a temporary ID
+      // 3. Show results IMMEDIATELY to user with a temporary ID
       const tempId = `temp-${Date.now()}`;
       const initialResult = { 
         ...analysis, 
-        ingredients_text: extraction.ingredients_text,
-        nutrition_text: extraction.nutrition_text,
         imageUrl: base64, 
         placeholderUrl: placeholder,
         id: tempId, 
@@ -2472,8 +2413,8 @@ export default function App() {
             imageUrl: base64,
             placeholderUrl: placeholder,
             createdAt: serverTimestamp(),
-            ingredients_text: extraction.ingredients_text || '',
-            nutrition_text: extraction.nutrition_text || '',
+            ingredients_text: analysis.ingredients_text || '',
+            nutrition_text: analysis.nutrition_text || '',
           };
           
           const docRef = await addDoc(collection(db, 'scans'), scanDoc);
@@ -2487,8 +2428,8 @@ export default function App() {
 
           // B. Fetch Recommendations
           const recommendations = await getProductRecommendations(
-            extraction.product_name,
-            extraction.ingredients_text,
+            analysis.product_name,
+            analysis.ingredients_text || '',
             analysisMode,
             analysis.overall_verdict === 'Good'
           );

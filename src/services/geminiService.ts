@@ -90,6 +90,8 @@ const SCAN_RESULT_SCHEMA = {
     allergen_flags: { type: Type.ARRAY, items: { type: Type.STRING } },
     warnings: { type: Type.ARRAY, items: { type: Type.STRING } },
     raw_ocr_text: { type: Type.STRING },
+    ingredients_text: { type: Type.STRING },
+    nutrition_text: { type: Type.STRING },
     processing_level: { type: Type.STRING },
     better_alternatives_guidance: { type: Type.STRING },
     recommended_products: RECOMMENDATION_SCHEMA
@@ -275,7 +277,7 @@ export async function analyzeIngredientLabel(base64Image: string, mimeType: stri
     - If a value is not found, estimate based on ingredients but mark as estimate in the summary.
     
     Tasks:
-    1. OCR text.
+    1. OCR text. Populate "ingredients_text" and "nutrition_text" with the exact text found.
     2. Identify ingredients and additives.
     3. Score health (0-100) and risk.
     4. Verdict: Good/Moderate/Bad. Action: Good Choice/Not Ideal/Avoid.
