@@ -1072,10 +1072,11 @@ const ComparisonResultScreen = ({ products, onBack, isAnalyzing }: { products: S
     const points2 = getPoints(prod2);
     const diff = Math.abs(points1 - points2);
 
-    const isP1Bad = prod1.overall_verdict === 'Bad' || prod1.health_score < 45;
-    const isP2Bad = prod2.overall_verdict === 'Bad' || prod2.health_score < 45;
-    const isP1Good = prod1.overall_verdict === 'Good' && prod1.health_score > 70;
-    const isP2Good = prod2.overall_verdict === 'Good' && prod2.health_score > 70;
+    // Scenario detection thresholds
+    const isP1Bad = prod1.overall_verdict === 'Bad' || prod1.health_score < 50;
+    const isP2Bad = prod2.overall_verdict === 'Bad' || prod2.health_score < 50;
+    const isP1Good = prod1.overall_verdict === 'Good' && prod1.health_score >= 70;
+    const isP2Good = prod2.overall_verdict === 'Good' && prod2.health_score >= 70;
 
     let outcomeType: 'both_good' | 'one_good_one_bad' | 'both_bad' | 'mixed' = 'mixed';
     if (isP1Bad && isP2Bad) outcomeType = 'both_bad';
@@ -1089,14 +1090,20 @@ const ComparisonResultScreen = ({ products, onBack, isAnalyzing }: { products: S
     const winner = points1 >= points2 ? prod1 : prod2;
     const loser = points1 >= points2 ? prod2 : prod1;
 
-    // Generate Reason
+    // Generate Reason based on scenarios
     let reason = "";
     if (outcomeType === 'both_bad') {
-      reason = "Both products have significant health concerns. Neither is a strong recommendation for regular use.";
+      const commonRisks = [];
+      if (prod1.nutrition_summary?.sugar?.level === 'High' && prod2.nutrition_summary?.sugar?.level === 'High') commonRisks.push("high sugar burden");
+      if (prod1.nutrition_summary?.sodium?.level === 'High' && prod2.nutrition_summary?.sodium?.level === 'High') commonRisks.push("sodium concerns");
+      
+      reason = `Both products have significant red flags ${commonRisks.length > 0 ? `including ${commonRisks.join(' and ')}` : ''}. We do not recommend either for regular consumption.`;
     } else if (outcomeType === 'both_good') {
-      reason = `${winner.product_name} is the slightly better pick, but both are generally acceptable options.`;
+      reason = `${winner.product_name} is the slightly better pick due to optimized ingredients, but both are generally high-quality options.`;
+    } else if (outcomeType === 'one_good_one_bad') {
+      reason = `${winner.product_name} is the clearly recommended choice over the non-ideal alternative.`;
     } else if (status === 'close') {
-      reason = "This is a very close comparison with minor trade-offs between both products.";
+      reason = "These products are very similar in quality. Choose based on specific dietary preference or taste.";
     } else {
       const reasons = [];
       const wRisks = (winner.ingredient_breakdown || []).filter(i => i.risk_level !== 'Low').length;
@@ -1105,12 +1112,11 @@ const ComparisonResultScreen = ({ products, onBack, isAnalyzing }: { products: S
       if (wRisks < lRisks) reasons.push("cleaner ingredient profile");
       if (winner.nutrition_summary?.sugar?.level !== 'High' && loser.nutrition_summary?.sugar?.level === 'High') reasons.push("lower sugar impact");
       if (winner.nutrition_summary?.sodium?.level !== 'High' && loser.nutrition_summary?.sodium?.level === 'High') reasons.push("better sodium control");
-      if (winner.health_score > loser.health_score + 10) reasons.push("higher overall quality");
       
       if (reasons.length > 0) {
         reason = `${winner.product_name} is the ${status === 'clear' ? 'clear' : 'slightly'} better choice due to its ${reasons.join(' and ')}.`;
       } else {
-        reason = `${winner.product_name} offers a more balanced nutritional profile for daily consumption.`;
+        reason = `${winner.product_name} offers a more balanced nutritional profile.`;
       }
     }
 
@@ -1233,8 +1239,9 @@ const ComparisonResultScreen = ({ products, onBack, isAnalyzing }: { products: S
             isAnalyzing ? "bg-gray-400 shadow-gray-100" :
             comparison.outcomeType === 'both_bad' ? "bg-red-600 shadow-red-200" :
             comparison.outcomeType === 'both_good' ? "bg-green-600 shadow-green-200" :
-            comparison.status === 'clear' ? "bg-brand-600 shadow-brand-200" : 
-            comparison.status === 'slight' ? "bg-blue-600 shadow-blue-200" : 
+            comparison.outcomeType === 'one_good_one_bad' ? "bg-brand-600 shadow-brand-200" :
+            comparison.status === 'clear' ? "bg-brand-500 shadow-brand-100" : 
+            comparison.status === 'slight' ? "bg-blue-600 shadow-blue-100" : 
             "bg-gray-800 shadow-gray-200"
           )}
         >
@@ -1246,13 +1253,14 @@ const ComparisonResultScreen = ({ products, onBack, isAnalyzing }: { products: S
             <div className="flex items-center space-x-2 mb-4">
               <div className="p-1.5 bg-white/20 rounded-lg">
                 {isAnalyzing ? <Loader2 className="w-4 h-4 text-white animate-spin" /> :
-                 comparison.outcomeType === 'both_bad' ? <AlertTriangle className="w-4 h-4 text-white" /> :
+                 comparison.outcomeType === 'both_bad' ? <AlertCircle className="w-4 h-4 text-white" /> :
                  comparison.status === 'close' ? <Scale className="w-4 h-4 text-white" /> : <Trophy className="w-4 h-4 text-white" />}
               </div>
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/90">
                 {isAnalyzing ? 'Analyzing Comparison...' :
                  comparison.outcomeType === 'both_bad' ? 'Neither Recommended' :
-                 comparison.outcomeType === 'both_good' ? 'Both are Good Choices' :
+                 comparison.outcomeType === 'both_good' ? 'Recommended Choice' :
+                 comparison.outcomeType === 'one_good_one_bad' ? 'Recommended Pick' :
                  comparison.status === 'clear' ? 'Clear Better Pick' : 
                  comparison.status === 'slight' ? 'Slightly Better Pick' : 
                  'Very Close Call'}
@@ -1260,7 +1268,8 @@ const ComparisonResultScreen = ({ products, onBack, isAnalyzing }: { products: S
             </div>
             <h3 className="text-3xl font-display font-black mb-3 leading-tight">
               {isAnalyzing ? 'Calculating Winner...' :
-               comparison.outcomeType === 'both_bad' ? 'Both Have Significant Concerns' :
+               comparison.outcomeType === 'both_bad' ? 'Both Products Have Significant Concerns' :
+               comparison.outcomeType === 'both_good' ? (comparison.status === 'close' ? 'Both are Decent Choices' : betterProduct.product_name) :
                comparison.status === 'close' ? 'Both are similar' : betterProduct.product_name}
             </h3>
             <div className="flex items-center space-x-3 p-3 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/10">
@@ -1277,11 +1286,14 @@ const ComparisonResultScreen = ({ products, onBack, isAnalyzing }: { products: S
           {[p1, p2].map((p, i) => (
             <Card key={i} className={cn(
               "p-4 flex flex-col items-center space-y-3 relative overflow-hidden",
-              betterProduct.id === p.id ? "ring-2 ring-brand-500 border-transparent" : "border-gray-100"
+              betterProduct.id === p.id && comparison.outcomeType !== 'both_bad' ? "ring-2 ring-brand-500 border-transparent" : "border-gray-100"
             )}>
               {betterProduct.id === p.id && (
-                <div className="absolute top-0 right-0 p-1.5 bg-brand-500 rounded-bl-xl">
-                  <CheckCircle2 className="w-3 h-3 text-white" />
+                <div className={cn(
+                  "absolute top-0 right-0 p-1.5 rounded-bl-xl",
+                  comparison.outcomeType === 'both_bad' ? "bg-red-500" : "bg-brand-500"
+                )}>
+                  {comparison.outcomeType === 'both_bad' ? <AlertTriangle className="w-3 h-3 text-white" /> : <CheckCircle2 className="w-3 h-3 text-white" />}
                 </div>
               )}
               <div className="w-20 h-20 rounded-2xl bg-gray-50 overflow-hidden shadow-inner flex items-center justify-center">
@@ -1304,9 +1316,17 @@ const ComparisonResultScreen = ({ products, onBack, isAnalyzing }: { products: S
                   </span>
                   {p.health_score !== 0 && <span className="text-[10px] font-bold text-gray-400">/100</span>}
                 </div>
-                <Badge variant={p.overall_verdict === 'Good' ? 'green' : p.overall_verdict === 'Moderate' ? 'yellow' : 'red'} className="text-[8px] px-1.5 py-0">
-                  {p.health_score === 0 ? 'Analyzing...' : p.overall_verdict}
-                </Badge>
+                <div className="flex flex-col items-center gap-1">
+                  <Badge variant={p.overall_verdict === 'Good' ? 'green' : p.overall_verdict === 'Moderate' ? 'yellow' : 'red'} className="text-[8px] px-1.5 py-0">
+                    {p.health_score === 0 ? 'Analyzing...' : p.overall_verdict}
+                  </Badge>
+                  {betterProduct.id === p.id && comparison.outcomeType === 'both_bad' && (
+                    <span className="text-[8px] font-black text-red-600 uppercase tracking-tight">Slightly less concerning</span>
+                  )}
+                  {betterProduct.id === p.id && comparison.outcomeType === 'both_good' && (
+                    <span className="text-[8px] font-black text-green-600 uppercase tracking-tight">Better pick</span>
+                  )}
+                </div>
               </div>
             </Card>
           ))}
@@ -1566,22 +1586,28 @@ const ComparisonResultScreen = ({ products, onBack, isAnalyzing }: { products: S
         {/* 7. Final Recommendation */}
         <Card className={cn(
           "p-6 border-2 shadow-xl rounded-[2rem]",
-          comparison.outcomeType === 'both_bad' ? "bg-red-50 border-red-100 shadow-red-50" : "bg-white border-brand-100 shadow-brand-50"
+          comparison.outcomeType === 'both_bad' ? "bg-red-50 border-red-100 shadow-red-50" : 
+          comparison.outcomeType === 'both_good' ? "bg-green-50 border-green-100 shadow-green-50" :
+          "bg-white border-brand-100 shadow-brand-50"
         )}>
           <div className="flex items-center space-x-3 mb-4">
-            <div className={cn("p-2 rounded-xl", comparison.outcomeType === 'both_bad' ? "bg-red-100" : "bg-brand-50")}>
+            <div className={cn("p-2 rounded-xl", comparison.outcomeType === 'both_bad' ? "bg-red-100" : comparison.outcomeType === 'both_good' ? "bg-green-100" : "bg-brand-50")}>
               {comparison.outcomeType === 'both_bad' ? <AlertTriangle className="w-5 h-5 text-red-600" /> : <CheckCircle2 className="w-5 h-5 text-brand-600" />}
             </div>
             <h3 className="font-bold text-gray-900">
-              {comparison.outcomeType === 'both_bad' ? 'Responsible Guidance' : 'Final Recommendation'}
+              {comparison.outcomeType === 'both_bad' ? 'Responsible Guidance' : 
+               comparison.outcomeType === 'both_good' ? 'Expert Comparison' :
+               'Final Recommendation'}
             </h3>
           </div>
           <div className="space-y-4">
-            <p className="text-sm text-gray-600 leading-relaxed">
+            <p className="text-sm text-gray-600 leading-relaxed font-medium">
               {comparison.outcomeType === 'both_bad' 
                 ? `While ${betterProduct.product_name} is marginally better than the other option, both products contain significant red flags. We do not recommend either for regular consumption.`
                 : comparison.outcomeType === 'both_good'
-                ? `Both products are high-quality choices. ${betterProduct.product_name} is the slightly better pick, but you can feel confident choosing either based on your preference.`
+                ? `Both products are high-quality choices. ${betterProduct.product_name} is the slightly better pick due to cleaner ingredient processing, but you can feel confident choosing either based on your preference.`
+                : comparison.outcomeType === 'one_good_one_bad'
+                ? `${betterProduct.product_name} is clearly the superior and recommended choice for a healthier lifestyle, while the alternative should be avoided.`
                 : comparison.status === 'close' 
                 ? `Both products are very similar in quality. Choose based on your taste preference or specific dietary needs like ${(betterProduct.suitability_flags || [])[0]?.group || 'general health'}.`
                 : `Based on the smart comparison, ${betterProduct.product_name} is the recommended choice for a healthier lifestyle.`}
@@ -1589,15 +1615,19 @@ const ComparisonResultScreen = ({ products, onBack, isAnalyzing }: { products: S
             <ul className="space-y-2">
               <li className="flex items-center space-x-2 text-xs text-gray-700">
                 <div className={cn("w-1.5 h-1.5 rounded-full", comparison.outcomeType === 'both_bad' ? "bg-red-500" : "bg-brand-500")} />
-                <span>Smart Decision Logic: {comparison.outcomeType === 'both_bad' ? 'NEITHER RECOMMENDED' : comparison.status.toUpperCase() + ' WINNER'}</span>
+                <span className="font-bold">Smart Decision Logic: {
+                  comparison.outcomeType === 'both_bad' ? 'NEITHER RECOMMENDED (High Risk)' : 
+                  comparison.outcomeType === 'both_good' ? 'BOTH ACCEPTABLE (Better Pick Found)' :
+                  comparison.status.toUpperCase() + ' WINNER'
+                }</span>
               </li>
               <li className="flex items-center space-x-2 text-xs text-gray-700">
                 <div className={cn("w-1.5 h-1.5 rounded-full", comparison.outcomeType === 'both_bad' ? "bg-red-500" : "bg-brand-500")} />
-                <span>{comparison.outcomeType === 'both_bad' ? 'Multiple red flags identified in both' : betterRisks.length < otherRisks.length ? 'Significantly cleaner ingredients' : 'Better overall nutritional balance'}</span>
+                <span>{comparison.outcomeType === 'both_bad' ? 'Multiple red flags identified in both products' : betterRisks.length < otherRisks.length ? 'Significantly cleaner ingredients profile' : 'Better overall nutritional balance'}</span>
               </li>
               <li className="flex items-center space-x-2 text-xs text-gray-700">
                 <div className={cn("w-1.5 h-1.5 rounded-full", comparison.outcomeType === 'both_bad' ? "bg-red-500" : "bg-brand-500")} />
-                <span>{comparison.outcomeType === 'both_bad' ? 'Occasional use only, not for daily diet' : `Optimized for ${(betterProduct.suitability_flags || []).filter(f => f.status === 'Suitable')[0]?.group || 'Daily Use'}`}</span>
+                <span>{comparison.outcomeType === 'both_bad' ? 'Better avoid both for regular use' : `Optimized for ${(betterProduct.suitability_flags || []).filter(f => f.status === 'Suitable')[0]?.group || 'Daily Use'}`}</span>
               </li>
             </ul>
           </div>
