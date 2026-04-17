@@ -263,34 +263,19 @@ export async function analyzeIngredientLabel(base64Image: string, mimeType: stri
   };
 
   const prompt = `
-    Analyze this food label image. Mode: ${mode}. Focus: ${modeInstructions[mode] || modeInstructions.General}.
+    Analyze food label image. Mode: ${mode} (${modeInstructions[mode] || modeInstructions.General}).
     
-    Indian Label Context:
-    - Handle FSSAI labeling and INS codes.
-    - Be critical of Palm Oil/Vanaspati.
-    - RULE: If sugar > 50% weight, verdict MUST be "Avoid".
+    Context: Indian FSSAI/INS. Critical of Palm Oil. 
+    Constraint: If sugar > 50% weight -> Verdict: Avoid.
     
-    Nutrition Snapshot Extraction:
-    - Extract values for Sugar, Sodium, Protein, Fiber, and Saturated Fat.
-    - IMPORTANT: If the label provides values "per 100g", use those directly. If it provides values "per serving", calculate the equivalent "per 100g" if the serving size is clear, otherwise state the value as is but specify the unit.
-    - Be extremely precise with numbers. If a value is "0g", report "0g".
-    - If a value is not found, estimate based on ingredients but mark as estimate in the summary.
+    Data to Extract:
+    1. OCR: ingredients_text, nutrition_text.
+    2. Precision: Values for Sugar, Sodium, Protein, Fiber, Saturated Fat (per 100g if available).
+    3. Breakdown: Ingredients, risk levels, suitability (Kids, Diabetics, etc).
+    4. Verdict: score (0-100), verdict (Good/Moderate/Bad), action (Good Choice/Not Ideal/Avoid), top reasons.
+    5. Meta: Processing level, alternatives.
     
-    Tasks:
-    1. OCR text. Populate "ingredients_text" and "nutrition_text" with the exact text found.
-    2. Identify ingredients and additives.
-    3. Score health (0-100) and risk.
-    4. Verdict: Good/Moderate/Bad. Action: Good Choice/Not Ideal/Avoid.
-    5. Top 3 reasons.
-    6. Score breakdown.
-    7. Confidence level.
-    8. Suitability (Children, Diabetics, etc.).
-    9. Ingredient risk levels.
-    10. Processing level.
-    11. Better alternatives.
-    12. Use standard units (g, mg, kcal, ml) with space.
-    13. No medical diagnosis.
-    14. JSON output only.
+    Rules: JSON only. No medical advice. Use metric units.
   `;
 
   const maxRetries = 5;
