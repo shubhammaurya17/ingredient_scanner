@@ -1,6 +1,17 @@
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { ScanResult, AnalysisMode, ProductRecommendation } from "../types";
 
+export type AnalysisStatus = 
+  | "initializing"
+  | "uploading"
+  | "extracting"
+  | "analyzing"
+  | "finding_alternatives"
+  | "finishing"
+  | "retrying";
+
+export type StatusCallback = (status: AnalysisStatus, detail?: string) => void;
+
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 const RECOMMENDATION_SCHEMA = {
@@ -46,11 +57,11 @@ const SCAN_RESULT_SCHEMA = {
     nutrition_summary: {
       type: Type.OBJECT,
       properties: {
-        sugar: { type: Type.OBJECT, properties: { value: { type: Type.STRING }, level: { type: Type.STRING, enum: ["Low", "Moderate", "High"] } }, required: ["value", "level"] },
-        sodium: { type: Type.OBJECT, properties: { value: { type: Type.STRING }, level: { type: Type.STRING, enum: ["Low", "Moderate", "High"] } }, required: ["value", "level"] },
-        protein: { type: Type.OBJECT, properties: { value: { type: Type.STRING }, level: { type: Type.STRING, enum: ["Low", "Moderate", "High"] } }, required: ["value", "level"] },
-        fiber: { type: Type.OBJECT, properties: { value: { type: Type.STRING }, level: { type: Type.STRING, enum: ["Low", "Moderate", "High"] } }, required: ["value", "level"] },
-        saturated_fat: { type: Type.OBJECT, properties: { value: { type: Type.STRING }, level: { type: Type.STRING, enum: ["Low", "Moderate", "High"] } }, required: ["value", "level"] }
+        sugar: { type: Type.OBJECT, properties: { value: { type: Type.STRING }, level: { type: Type.STRING, enum: ["Low", "Moderate", "High", "N/A"] } }, required: ["value", "level"] },
+        sodium: { type: Type.OBJECT, properties: { value: { type: Type.STRING }, level: { type: Type.STRING, enum: ["Low", "Moderate", "High", "N/A"] } }, required: ["value", "level"] },
+        protein: { type: Type.OBJECT, properties: { value: { type: Type.STRING }, level: { type: Type.STRING, enum: ["Low", "Moderate", "High", "N/A"] } }, required: ["value", "level"] },
+        fiber: { type: Type.OBJECT, properties: { value: { type: Type.STRING }, level: { type: Type.STRING, enum: ["Low", "Moderate", "High", "N/A"] } }, required: ["value", "level"] },
+        saturated_fat: { type: Type.OBJECT, properties: { value: { type: Type.STRING }, level: { type: Type.STRING, enum: ["Low", "Moderate", "High", "N/A"] } }, required: ["value", "level"] }
       },
       required: ["sugar", "sodium", "protein", "fiber", "saturated_fat"]
     },
@@ -96,7 +107,7 @@ const SCAN_RESULT_SCHEMA = {
     better_alternatives_guidance: { type: Type.STRING },
     recommended_products: RECOMMENDATION_SCHEMA
   },
-  required: ["product_name", "overall_verdict", "verdict_action", "health_score", "ingredient_breakdown", "confidence_level", "top_reasons", "score_breakdown", "nutrition_summary", "suitability_flags", "better_alternatives_guidance"]
+  required: ["product_name", "overall_verdict", "verdict_action", "health_score", "ingredient_breakdown", "confidence_level", "top_reasons", "score_breakdown", "nutrition_summary", "suitability_flags", "better_alternatives_guidance", "why_summary"]
 };
 
 const EXTRACTION_SCHEMA = {
@@ -109,7 +120,12 @@ const EXTRACTION_SCHEMA = {
   required: ["product_name", "ingredients_text"]
 };
 
-export async function extractIngredientsText(base64Image: string, mimeType: string): Promise<{ product_name: string, ingredients_text: string, nutrition_text?: string }> {
+export async function extractIngredientsText(
+  base64Image: string, 
+  mimeType: string,
+  onStatus?: StatusCallback
+): Promise<{ product_name: string, ingredients_text: string, nutrition_text?: string }> {
+  onStatus?.("extracting", "Reading label text...");
   const primaryModel = "gemini-3.1-flash-lite-preview";
   const fallbackModel = "gemini-flash-latest";
   const prompt = `
@@ -159,6 +175,7 @@ export async function extractIngredientsText(base64Image: string, mimeType: stri
         if (isQuotaExceeded) useFallback = true;
         
         const delay = isQuotaExceeded ? 1000 : Math.pow(2, retryCount) * 1000;
+        onStatus?.("retrying", `High demand. Retrying... (${retryCount}/${maxRetries})`);
         console.warn(`Gemini extraction retry ${retryCount}/${maxRetries} using ${useFallback ? fallbackModel : primaryModel} after ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
@@ -174,8 +191,10 @@ export async function analyzeIngredientsFromText(
   productName: string, 
   ingredientsText: string, 
   nutritionText: string | undefined, 
-  mode: AnalysisMode = "General"
+  mode: AnalysisMode = "General",
+  onStatus?: StatusCallback
 ): Promise<ScanResult> {
+  onStatus?.("analyzing", `Analyzing ${productName}...`);
   const primaryModel = "gemini-3.1-flash-lite-preview";
   const fallbackModel = "gemini-flash-latest";
   
@@ -195,11 +214,23 @@ export async function analyzeIngredientsFromText(
     
     Context: Indian FSSAI, INS codes. Critical of Palm Oil. Sugar > 50% = Avoid.
     
+    Nutrition Thresholds (Strict per 100g):
+    - Sugar: <5g Low, 5-15g Moderate, >15g High
+    - Sodium: <120mg Low, 120-600mg Moderate, >600mg High
+    - Saturated Fat: <1.5g Low, 1.5-5g Moderate, >5g High
+    - Fiber: <2g Low, 2-5g Moderate, >5g High
+    - Protein: <5g Low, 5-10g Moderate, >10g High
+    
+    Rules for Nutrition:
+    1. Only assign High/Moderate/Low if based on real data from the label or a very high-confidence estimation from ingredients.
+    2. If a value is NOT available or cannot be identified, use "N/A" for the value and level. Do NOT use placeholder values like "n" or "0" if unknown.
+    
     Output JSON:
     - product_name
     - health_score (0-100)
     - overall_verdict (Good/Moderate/Bad)
     - verdict_action (Good Choice/Not Ideal/Avoid)
+    - why_summary (1-sentence summary of why this score was given)
     - top_reasons (3)
     - score_breakdown
     - nutrition_summary (sugar, sodium, protein, fiber, saturated_fat)
@@ -241,6 +272,7 @@ export async function analyzeIngredientsFromText(
         if (isQuotaExceeded) useFallback = true;
 
         const delay = isQuotaExceeded ? 1000 : Math.pow(2, retryCount) * 1000;
+        onStatus?.("retrying", `Server busy. Retrying analysis... (${retryCount}/${maxRetries})`);
         console.warn(`Gemini analysis retry ${retryCount}/${maxRetries} using ${useFallback ? fallbackModel : primaryModel} after ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
@@ -251,7 +283,13 @@ export async function analyzeIngredientsFromText(
   throw new Error("Failed to analyze text after multiple retries.");
 }
 
-export async function analyzeIngredientLabel(base64Image: string, mimeType: string, mode: AnalysisMode = "General"): Promise<ScanResult> {
+export async function analyzeIngredientLabel(
+  base64Image: string, 
+  mimeType: string, 
+  mode: AnalysisMode = "General",
+  onStatus?: StatusCallback
+): Promise<ScanResult> {
+  onStatus?.("extracting", "Scanning label...");
   const primaryModel = "gemini-3.1-flash-lite-preview";
   const fallbackModel = "gemini-flash-latest";
   
@@ -268,14 +306,22 @@ export async function analyzeIngredientLabel(base64Image: string, mimeType: stri
     Context: Indian FSSAI/INS. Critical of Palm Oil. 
     Constraint: If sugar > 50% weight -> Verdict: Avoid.
     
+    Nutrition Thresholds (Strict per 100g):
+    - Sugar: <5g Low, 5-15g Moderate, >15g High
+    - Sodium: <120mg Low, 120-600mg Moderate, >600mg High
+    - Saturated Fat: <1.5g Low, 1.5-5g Moderate, >5g High
+    - Fiber: <2g Low, 2-5g Moderate, >5g High
+    - Protein: <5g Low, 5-10g Moderate, >10g High
+    
     Data to Extract:
     1. OCR: ingredients_text, nutrition_text.
-    2. Precision: Values for Sugar, Sodium, Protein, Fiber, Saturated Fat (per 100g if available).
+    2. Precision: Values for Sugar, Sodium, Protein, Fiber, Saturated Fat (per 100g if available). 
+       - If a value is missing or unknown, use "N/A" for value and level.
     3. Breakdown: Ingredients, risk levels, suitability (Kids, Diabetics, etc).
     4. Verdict: score (0-100), verdict (Good/Moderate/Bad), action (Good Choice/Not Ideal/Avoid), top reasons.
     5. Meta: Processing level, alternatives.
     
-    Rules: JSON only. No medical advice. Use metric units.
+    Rules: JSON only. No medical advice. Use metric units. Only assign levels if data is clear or high-confidence.
   `;
 
   const maxRetries = 5;
@@ -317,6 +363,7 @@ export async function analyzeIngredientLabel(base64Image: string, mimeType: stri
         if (isQuotaExceeded) useFallback = true;
 
         const delay = isQuotaExceeded ? 1000 : Math.pow(2, retryCount) * 1000; // Exponential backoff: 2s, 4s, 8s
+        onStatus?.("retrying", `High traffic. Retrying scan... (${retryCount}/${maxRetries})`);
         console.warn(`Gemini analysis retry ${retryCount}/${maxRetries} using ${useFallback ? fallbackModel : primaryModel} after ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
@@ -336,13 +383,15 @@ export async function getProductRecommendations(
   productName: string,
   ingredients: string,
   mode: AnalysisMode = "General",
-  isGoodProduct: boolean = false
+  isGoodProduct: boolean = false,
+  onStatus?: StatusCallback
 ): Promise<ProductRecommendation[]> {
   if (Date.now() < quotaExceededUntil) {
     console.warn("Skipping AI recommendations due to recent quota exhaustion.");
     return [];
   }
 
+  onStatus?.("finding_alternatives", "Looking for healthier choices...");
   const primaryModel = "gemini-3.1-flash-lite-preview";
   const fallbackModel = "gemini-flash-latest";
 
@@ -465,4 +514,35 @@ export async function getProductRecommendations(
   const uniqueResults = results.filter((v, i, a) => a.findIndex(t => t.product_name === v.product_name && t.brand === v.brand) === i);
   
   return uniqueResults.slice(0, 5);
+}
+
+export async function* streamAnalysisSummary(
+  productName: string,
+  ingredients: string,
+  mode: AnalysisMode = "General"
+) {
+  const prompt = `Give a very quick, conversational 2-sentence summary of the health impact of this product.
+  Product: ${productName}
+  Ingredients: ${ingredients}
+  Focus: ${mode}
+  Be direct. Start immediately with the analysis.`;
+
+  try {
+    const response = await ai.models.generateContentStream({
+      model: "gemini-3-flash-preview",
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+      }
+    });
+
+    for await (const chunk of response) {
+      if (chunk.text) {
+        yield chunk.text;
+      }
+    }
+  } catch (error) {
+    console.error("Stream summary error:", error);
+    yield "Analyzing deep ingredients...";
+  }
 }

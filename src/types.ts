@@ -53,11 +53,12 @@ export interface ScanResult {
   confirmed_facts: string[];
   ai_estimates: string[];
   nutrition_summary: {
-    sugar: { value: string; level: 'Low' | 'Moderate' | 'High' };
-    sodium: { value: string; level: 'Low' | 'Moderate' | 'High' };
-    protein: { value: string; level: 'Low' | 'Moderate' | 'High' };
-    fiber: { value: string; level: 'Low' | 'Moderate' | 'High' };
-    saturated_fat: { value: string; level: 'Low' | 'Moderate' | 'High' };
+    calories?: { value: string; level: 'Low' | 'Moderate' | 'High' | 'N/A' };
+    sugar: { value: string; level: 'Low' | 'Moderate' | 'High' | 'N/A' };
+    sodium: { value: string; level: 'Low' | 'Moderate' | 'High' | 'N/A' };
+    protein: { value: string; level: 'Low' | 'Moderate' | 'High' | 'N/A' };
+    fiber: { value: string; level: 'Low' | 'Moderate' | 'High' | 'N/A' };
+    saturated_fat: { value: string; level: 'Low' | 'Moderate' | 'High' | 'N/A' };
   };
   ingredient_breakdown: IngredientBreakdown[];
   suitability_flags: SuitabilityFlag[];
