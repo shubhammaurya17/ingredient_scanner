@@ -39,9 +39,13 @@ const getMetricWinner = (v1: number, v2: number, better: 'lower' | 'higher') => 
 };
 
 const MetricRow = ({ label, v1, v2, unit = '', better = 'lower' }: { label: string, v1: string | number, v2: string | number, unit?: string, better?: 'lower' | 'higher' }) => {
-  const val1 = typeof v1 === 'string' ? parseFloat(v1.replace(/[^0-9.]/g, '')) || 0 : v1;
-  const val2 = typeof v2 === 'string' ? parseFloat(v2.replace(/[^0-9.]/g, '')) || 0 : v2;
-  const winner = getMetricWinner(val1, val2, better);
+  const isV1NA = v1 === 'n' || v1 === 'N/A' || v1 === undefined || v1 === null || (typeof v1 === 'string' && !/[0-9]/.test(v1));
+  const isV2NA = v2 === 'n' || v2 === 'N/A' || v2 === undefined || v2 === null || (typeof v2 === 'string' && !/[0-9]/.test(v2));
+
+  const val1 = isV1NA ? (better === 'lower' ? Infinity : -Infinity) : (typeof v1 === 'string' ? parseFloat(v1.replace(/[^0-9.]/g, '')) || 0 : v1);
+  const val2 = isV2NA ? (better === 'lower' ? Infinity : -Infinity) : (typeof v2 === 'string' ? parseFloat(v2.replace(/[^0-9.]/g, '')) || 0 : v2);
+  
+  const winner = (isV1NA && isV2NA) ? null : getMetricWinner(val1, val2, better);
   
   return (
     <div className="py-3 border-b border-gray-50 last:border-0">
@@ -54,7 +58,7 @@ const MetricRow = ({ label, v1, v2, unit = '', better = 'lower' }: { label: stri
           winner === 1 ? "bg-green-50 ring-1 ring-green-100" : (winner === 2 ? "bg-red-50/30" : "bg-gray-50/50")
         )}>
           <span className={cn("text-sm font-bold", winner === 1 ? "text-green-700" : (winner === 2 ? "text-red-700" : "text-gray-600"))}>
-            {formatValue(v1, unit)}
+            {isV1NA ? 'N/A' : formatValue(v1, unit)}
           </span>
           {winner === 1 && <CheckCircle2 className="w-3 h-3 text-green-500 mt-1" />}
           {winner === 2 && <XCircle className="w-3 h-3 text-red-400 mt-1" />}
@@ -65,7 +69,7 @@ const MetricRow = ({ label, v1, v2, unit = '', better = 'lower' }: { label: stri
           winner === 2 ? "bg-green-50 ring-1 ring-green-100" : (winner === 1 ? "bg-red-50/30" : "bg-gray-50/50")
         )}>
           <span className={cn("text-sm font-bold", winner === 2 ? "text-green-700" : (winner === 1 ? "text-red-700" : "text-gray-600"))}>
-            {formatValue(v2, unit)}
+            {isV2NA ? 'N/A' : formatValue(v2, unit)}
           </span>
           {winner === 2 && <CheckCircle2 className="w-3 h-3 text-green-500 mt-1" />}
           {winner === 1 && <XCircle className="w-3 h-3 text-red-400 mt-1" />}
@@ -274,11 +278,6 @@ export const ComparisonResultScreen = React.memo(({ products, onBack, isAnalyzin
               </div>
               <h2 className="text-xl font-display font-black text-red-900">Avoid Both Products</h2>
               <p className="text-sm font-medium text-red-700 leading-snug">Both products have significant health concerns and red flags.</p>
-              <div className="pt-2">
-                <Button variant="outline" className="bg-white border-red-200 text-red-600" onClick={onBack}>
-                   See Better Alternatives <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </div>
             </>
           ) : (comparison.status === 'close' && p1.health_score < 40) ? (
             <>
@@ -349,7 +348,7 @@ export const ComparisonResultScreen = React.memo(({ products, onBack, isAnalyzin
                   <span className="text-xs font-black text-gray-700">{prod.overall_verdict}</span>
                 </div>
               </div>
-              <p className="text-[10px] text-gray-500 font-medium line-clamp-2 italic">
+              <p className="text-[10px] text-gray-500 font-medium line-clamp-none italic">
                 {prod.why_summary || `Standard profile classification: ${prod.overall_verdict}.`}
               </p>
               <div className="pt-1 flex items-baseline space-x-0.5">

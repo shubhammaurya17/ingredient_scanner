@@ -8,6 +8,16 @@ export const formatValue = (v: string | number | undefined | null, defaultUnit: 
   const numMatch = str.match(/[0-9.]+/);
   const numPart = numMatch ? numMatch[0] : '';
   
+  // If no number is found, and it's not a standard 'N/A' already, it might be garbage
+  if (!numPart && str.toLowerCase() !== 'n/a' && str.trim() !== '') {
+    // Check if it's just 'n' or other non-numeric garbage
+    if (str.length === 1 || !/[0-9]/.test(str)) {
+      return 'N/A';
+    }
+  }
+
+  if (str.toLowerCase() === 'n/a') return 'N/A';
+  
   // Extract the unit part (everything after the first number)
   const unitMatch = str.match(/[a-zA-Z% /]+/);
   let unitPart = (unitMatch && unitMatch[0]) ? unitMatch[0].trim().toLowerCase() : '';

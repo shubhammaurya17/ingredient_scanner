@@ -529,10 +529,11 @@ export async function* streamAnalysisSummary(
 
   try {
     const response = await ai.models.generateContentStream({
-      model: "gemini-3-flash-preview",
+      model: "gemini-3.1-flash-lite-preview",
       contents: [{ parts: [{ text: prompt }] }],
       config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+        // lite already uses ThinkingLevel.MINIMAL by default
+        temperature: 0.7
       }
     });
 
@@ -543,6 +544,7 @@ export async function* streamAnalysisSummary(
     }
   } catch (error) {
     console.error("Stream summary error:", error);
-    yield "Analyzing deep ingredients...";
+    // Graceful fallback message instead of showing raw error
+    yield "Finalizing our deep ingredient analysis...";
   }
 }
